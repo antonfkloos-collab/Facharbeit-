@@ -240,23 +240,46 @@ import geopandas as gpd
 from shapely.geometry import LineString
 
 # Lade Unfalldaten (2024) – nur Siegen/Eiserfeld
-acc_file = r"C:\Users\anton\Documents\GitHub\Facharbeit-NAvigation\unfaelle_siegenwittgenstein.csv\Unfallorte2024_LinRef.csv.csv"
-try:
-    df_acc = pd.read_csv(acc_file, sep=";", decimal=",", low_memory=False)
-except Exception as e:
-    raise RuntimeError(f"Unfalldatei {acc_file} konnte nicht geladen werden: {e}")
+"""Hinweis zum Datenpfad:
+Das Skript versucht zunächst eine Datei im lokalen Repository unter
+    ./data/Unfallorte2024.csv
+zu laden (empfohlener Name). Falls sie fehlt, wird ohne Unfalldaten gearbeitet.
+Die bisher fest verdrahtete Windows-Pfad-Variante wurde ersetzt für Portabilität.
+"""
 
-df_acc["XGCSWGS84"] = pd.to_numeric(df_acc["XGCSWGS84"], errors="coerce")
-df_acc["YGCSWGS84"] = pd.to_numeric(df_acc["YGCSWGS84"], errors="coerce")
-df_acc = df_acc.dropna(subset=["XGCSWGS84", "YGCSWGS84"])
+# Mögliche Kandidaten (erste vorhandene wird genutzt)
+acc_candidates = [
+    os.path.join(os.path.dirname(__file__), "data", "Unfallorte2024.csv"),
+    os.path.join(os.path.dirname(__file__), "data", "unfaelle.csv"),
+]
+acc_file = None
+for cand in acc_candidates:
+    if os.path.isfile(cand):
+        acc_file = cand
+        break
 
-# Filter: nur Unfälle im Bereich Siegen/Eiserfeld (Bounding Box)
-min_lon, max_lon = 7.98, 8.08
-min_lat, max_lat = 50.82, 50.90
-df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_lon) &
-                (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
+df_acc = None
+if acc_file:
+    try:
+        df_acc = pd.read_csv(acc_file, sep=";", decimal=",", low_memory=False)
+        print(f"Unfalldaten geladen: {acc_file}")
+    except Exception as e:
+        print(f"Warnung: Unfalldatei {acc_file} konnte nicht geladen werden: {e}. Fahre ohne Unfalldaten fort.")
+else:
+    print("Keine Unfalldatei gefunden (data/Unfallorte2024.csv). Karte wird ohne Unfallschichtung erstellt.")
 
-gdf_acc = gpd.GeoDataFrame(df_acc, geometry=gpd.points_from_xy(df_acc["XGCSWGS84"], df_acc["YGCSWGS84"]), crs="EPSG:4326").to_crs(3857)
+if df_acc is not None:
+    df_acc["XGCSWGS84"] = pd.to_numeric(df_acc["XGCSWGS84"], errors="coerce")
+    df_acc["YGCSWGS84"] = pd.to_numeric(df_acc["YGCSWGS84"], errors="coerce")
+    df_acc = df_acc.dropna(subset=["XGCSWGS84", "YGCSWGS84"])
+    # Bounding Box Siegen/Eiserfeld
+    min_lon, max_lon = 7.98, 8.08
+    min_lat, max_lat = 50.82, 50.90
+    df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_lon) &
+                    (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
+    gdf_acc = gpd.GeoDataFrame(df_acc, geometry=gpd.points_from_xy(df_acc["XGCSWGS84"], df_acc["YGCSWGS84"]), crs="EPSG:4326").to_crs(3857)
+else:
+    gdf_acc = None
 
 # Baue Kanten-GeoDataFrame
 rows = []
@@ -282,15 +305,16 @@ for u, v, key, data in G.edges(keys=True, data=True):
 
 edges_gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326").to_crs(3857)
 
-# Buffer Kanten und zähle Unfälle in 20m Umgebung
-buffers = edges_gdf.copy()
-buffers["geometry"] = buffers.geometry.buffer(20)
-joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within")
-counts = joined.groupby("index_right").size()
-edges_gdf["accidents"] = counts.reindex(edges_gdf.index).fillna(0).astype(int)
+if gdf_acc is not None:
+    buffers = edges_gdf.copy()
+    buffers["geometry"] = buffers.geometry.buffer(20)
+    joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within")
+    counts = joined.groupby("index_right").size()
+    edges_gdf["accidents"] = counts.reindex(edges_gdf.index).fillna(0).astype(int)
+else:
+    edges_gdf["accidents"] = 0
 
-# Risiko definieren (Unfälle pro km)
-edges_gdf["risk"] = edges_gdf.apply(lambda r: r["accidents"] / (max(r["length"], 1) / 1000.0), axis=1)
+edges_gdf["risk"] = edges_gdf.apply(lambda r: (r["accidents"] / (max(r["length"], 1) / 1000.0)) if r["accidents"] > 0 else 0.0, axis=1)
 
 # Straßenklassen-Strafe basierend auf OSM 'highway' Tag
 def highway_penalty_tag(h):
@@ -484,8 +508,9 @@ if n_points > max_points:
     sample = gdf_acc_plot.sample(max_points)
 else:
     sample = gdf_acc_plot
-heat_data = [[pt.y, pt.x] for pt in sample.geometry]
-HeatMap(heat_data, radius=7, blur=12, name='Unfall-Heatmap').add_to(m)
+if gdf_acc is not None and len(sample) > 0:
+    heat_data = [[pt.y, pt.x] for pt in sample.geometry]
+    HeatMap(heat_data, radius=7, blur=12, name='Unfall-Heatmap').add_to(m)
 
 def route_coords_from_nodes(node_list):
     coords = []
@@ -528,16 +553,20 @@ folium.LayerControl().add_to(m)
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 route_lines = []
-for kind, node_list in paths.items():
-    if not node_list:
-        continue
-    coords = route_coords_from_nodes(node_list)
-    route_lines.append(LineString([(lon, lat) for lat, lon in coords]))
-route_union = unary_union(route_lines)
-# inner buffer ~30m, outer buffer ~100m (in degrees approx)
-inner_buffer = route_union.buffer(0.0003)
-outer_buffer = route_union.buffer(0.0009)
-gdf_acc_plot = gdf_acc.to_crs(4326)
+if any(paths.values()):
+    for kind, node_list in paths.items():
+        if not node_list:
+            continue
+        coords = route_coords_from_nodes(node_list)
+        route_lines.append(LineString([(lon, lat) for lat, lon in coords]))
+
+if gdf_acc is not None and route_lines:
+    route_union = unary_union(route_lines)
+    inner_buffer = route_union.buffer(0.0003)
+    outer_buffer = route_union.buffer(0.0009)
+    gdf_acc_plot = gdf_acc.to_crs(4326)
+else:
+    gdf_acc_plot = None
 
 def val_to_yesno(v):
     if pd.isna(v):
@@ -556,9 +585,12 @@ def val_to_yesno(v):
 vehicle_cols = ["IstRad", "IstPKW", "IstFuss", "IstKrad", "IstGkfz", "IstSonstige"]
 
 # accidents exactly on/very near route
-on_route = gdf_acc_plot[gdf_acc_plot.geometry.within(inner_buffer)]
-# accidents near route but not inside inner buffer
-near_route = gdf_acc_plot[gdf_acc_plot.geometry.within(outer_buffer) & (~gdf_acc_plot.geometry.within(inner_buffer))]
+if gdf_acc_plot is not None and route_lines:
+    on_route = gdf_acc_plot[gdf_acc_plot.geometry.within(inner_buffer)]
+    near_route = gdf_acc_plot[gdf_acc_plot.geometry.within(outer_buffer) & (~gdf_acc_plot.geometry.within(inner_buffer))]
+else:
+    on_route = []
+    near_route = []
 
 def build_popup(acc):
     lines = []
