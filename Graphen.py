@@ -443,7 +443,7 @@ class GraphTool:
         img = Image.new("RGB", (w * SCALE, h * SCALE), "#112240")
         dr = ImageDraw.Draw(img)
 
-        col_edge = "#1e3a5f"   # dunkelblau
+        col_edge = "#4a6fa5"   # helleres Blau für Kanten
         col_path = "#64ffda"   # cyan
         col_outline = "#64ffda"
         r_node = 15
@@ -481,9 +481,9 @@ class GraphTool:
         for node_id, (x, y) in self.nodes.items():
             base = "#1e3a5f"
             if node_id == self.start_node:
-                base = "#0891b2"
+                base = "#10b981"   # grün für Start
             elif node_id == self.goal_node:
-                base = "#22d3ee"
+                base = "#f59e0b"   # orange für Ziel
 
             x0 = (x - r_node) * SCALE
             y0 = (y - r_node) * SCALE
@@ -517,7 +517,7 @@ class GraphTool:
             if node1 < node2:
                 x1, y1 = self.nodes[node1]
                 x2, y2 = self.nodes[node2]
-                self.canvas.create_line(x1, y1, x2, y2, fill="#1e3a5f", width=2)
+                self.canvas.create_line(x1, y1, x2, y2, fill="#4a6fa5", width=2)
                 acc_list = data['accidents']
                 for idx in self._acc_indices(acc_list):
                     ax, ay = acc_list[idx]
@@ -530,9 +530,9 @@ class GraphTool:
         for node_id, (x, y) in self.nodes.items():
             base = "#1e3a5f"
             if node_id == self.start_node:
-                base = "#0891b2"
+                base = "#10b981"   # grün für Start
             elif node_id == self.goal_node:
-                base = "#22d3ee"
+                base = "#f59e0b"   # orange für Ziel
             self.canvas.create_oval(x-15, y-15, x+15, y+15, fill=base, outline="#64ffda", width=1)
             txt_color = "#ccd6f6"
             self.canvas.create_text(x, y, text=str(node_id), fill=txt_color, font=("Segoe UI", 10, "bold"))
