@@ -13,9 +13,9 @@ except Exception:
 class GraphTool:
     def __init__(self, root):
         self.root = root
-        self.root.title("Straßennetz – Dijkstra")
+        self.root.title("Graphen & Dijkstra – Navigation")
         self.root.geometry("1200x800")
-        self.root.configure(bg="#F7F8FC")
+        self.root.configure(bg="#0a192f")
         
         # Graph-Daten
         self.nodes = {}  # {id: (x, y)}
@@ -36,21 +36,21 @@ class GraphTool:
         self.setup_ui()
         
     def setup_ui(self):
-        # Toolbar (hell, schlicht)
-        toolbar = tk.Frame(self.root, bg="#FAFAFF", height=64)
+        # Toolbar (dunkel, tech)
+        toolbar = tk.Frame(self.root, bg="#112240", height=64)
         toolbar.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
         
         button_style = {
             "font": ("Segoe UI", 10, "bold"),
-            "relief": tk.SOLID,
-            "bd": 1,
+            "relief": tk.FLAT,
+            "bd": 0,
             "padx": 16,
             "pady": 10,
             "cursor": "hand2",
-            "bg": "#EDEBFF",
-            "fg": "#16223A",
-            "activebackground": "#DCD8FF",
-            "activeforeground": "#16223A",
+            "bg": "#1e3a5f",
+            "fg": "#ccd6f6",
+            "activebackground": "#64ffda",
+            "activeforeground": "#0a192f",
             "highlightthickness": 0
         }
         
@@ -92,26 +92,26 @@ class GraphTool:
         self.btn_clear.pack(side=tk.LEFT, padx=5)
 
         # Unfalldichte-Regler
-        density_box = tk.Frame(toolbar, bg="#FFFFFF", relief=tk.SOLID, bd=1, highlightthickness=0)
+        density_box = tk.Frame(toolbar, bg="#112240", relief=tk.FLAT, bd=0, highlightthickness=0)
         density_box.pack(side=tk.LEFT, padx=10)
-        tk.Label(density_box, text="Unfalldichte", bg="#FFFFFF", fg="#16223A", font=("Segoe UI", 10, "bold")).pack(side=tk.TOP, anchor="w")
+        tk.Label(density_box, text="Unfalldichte", bg="#112240", fg="#64ffda", font=("Segoe UI", 10, "bold")).pack(side=tk.TOP, anchor="w")
         self.density_scale = tk.Scale(density_box, from_=0, to=100, orient=tk.HORIZONTAL, length=160,
-                          bg="#FFFFFF", highlightthickness=0, troughcolor="#EDEBFF",
+                          bg="#112240", fg="#ccd6f6", highlightthickness=0, troughcolor="#1e3a5f",
                                       showvalue=False, command=self._on_density_change)
         self.density_scale.set(int(self.acc_density * 100))
         self.density_scale.pack(side=tk.TOP)
 
         # Auswahl der Routenart – jede Option in eigenem Kasten
-        rb_kwargs = {"bg": "#FFFFFF", "activebackground": "#FFFFFF", "selectcolor": "#EDEBFF", "font": ("Segoe UI", 10, "bold")}
-        fast_box = tk.Frame(toolbar, bg="#FFFFFF", relief=tk.SOLID, bd=1, highlightthickness=0)
+        rb_kwargs = {"bg": "#112240", "fg": "#ccd6f6", "activebackground": "#112240", "selectcolor": "#0891b2", "font": ("Segoe UI", 10, "bold")}
+        fast_box = tk.Frame(toolbar, bg="#112240", relief=tk.FLAT, bd=0, highlightthickness=0)
         fast_box.pack(side=tk.LEFT, padx=6)
         tk.Radiobutton(fast_box, text="Schnell", variable=self.route_choice, value="fast", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
 
-        safe_box = tk.Frame(toolbar, bg="#FFFFFF", relief=tk.SOLID, bd=1, highlightthickness=0)
+        safe_box = tk.Frame(toolbar, bg="#112240", relief=tk.FLAT, bd=0, highlightthickness=0)
         safe_box.pack(side=tk.LEFT, padx=6)
         tk.Radiobutton(safe_box, text="Sicher", variable=self.route_choice, value="safe", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
 
-        mix_box = tk.Frame(toolbar, bg="#FFFFFF", relief=tk.SOLID, bd=1, highlightthickness=0)
+        mix_box = tk.Frame(toolbar, bg="#112240", relief=tk.FLAT, bd=0, highlightthickness=0)
         mix_box.pack(side=tk.LEFT, padx=6)
         tk.Radiobutton(mix_box, text="Misch", variable=self.route_choice, value="mix", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
 
@@ -119,20 +119,20 @@ class GraphTool:
         self.btn_calculate = tk.Button(toolbar, text="Route berechnen", 
                         command=self.calculate_path,
                         **button_style)
-        self.btn_calculate.config(bg="#6B5EFA", fg="#ffffff", activebackground="#4F43D9", activeforeground="#ffffff")
+        self.btn_calculate.config(bg="#0891b2", fg="#ffffff", activebackground="#22d3ee", activeforeground="#0a192f")
         self.btn_calculate.pack(side=tk.LEFT, padx=5)
 
         # Status-Label
         self.status_label = tk.Label(toolbar, text="Modus: Knoten hinzufügen", 
                          font=("Segoe UI", 11, "bold"),
-                         bg="#ffffff", fg="#1A1A1A", padx=20)
+                         bg="#112240", fg="#64ffda", padx=20)
         self.status_label.pack(side=tk.RIGHT)
         
         # Canvas in "Card"-Frame mit feiner Kontur
-        canvas_card = tk.Frame(self.root, bg="#FFFFFF", highlightthickness=0)
+        canvas_card = tk.Frame(self.root, bg="#112240", highlightthickness=0)
         canvas_card.pack(fill=tk.BOTH, expand=True, padx=16, pady=12)
 
-        self.canvas = tk.Canvas(canvas_card, bg="#FFFFFF", highlightthickness=0)
+        self.canvas = tk.Canvas(canvas_card, bg="#112240", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.canvas.bind("<Button-1>", self.canvas_click)
         # Erste Zeichnung nach Layout
@@ -171,11 +171,11 @@ class GraphTool:
         
         for btn_mode, (btn, text) in buttons.items():
             if btn_mode == mode:
-                # Aktiven Button dunkel
-                btn.config(bg="#1A1A1A", fg="#ffffff", relief=tk.SUNKEN)
-                self.status_label.config(text=f"Modus: {text}", fg="#1A1A1A")
+                # Aktiven Button cyan
+                btn.config(bg="#64ffda", fg="#0a192f", relief=tk.FLAT)
+                self.status_label.config(text=f"Modus: {text}", fg="#64ffda")
             else:
-                btn.config(bg="#F1F1FC", fg="#1A1A1A", relief=tk.SOLID)
+                btn.config(bg="#1e3a5f", fg="#ccd6f6", relief=tk.FLAT)
     
     def add_node(self, x, y):
         self.nodes[self.node_counter] = (x, y)
@@ -365,18 +365,18 @@ class GraphTool:
         """Öffnet einen minimalistischen Dialog mit 1–10 als Klickleiste."""
         top = tk.Toplevel(self.root)
         top.title("Kantengewicht wählen")
-        top.configure(bg="#ffffff")
+        top.configure(bg="#112240")
         top.transient(self.root)
         top.grab_set()
 
         # Layout
-        container = tk.Frame(top, bg="#ffffff")
+        container = tk.Frame(top, bg="#112240")
         container.pack(padx=16, pady=16)
 
-        title = tk.Label(container, text="Gewicht auswählen", bg="#ffffff", fg="#111827", font=("Segoe UI", 11, "bold"))
+        title = tk.Label(container, text="Gewicht auswählen", bg="#112240", fg="#64ffda", font=("Segoe UI", 11, "bold"))
         title.pack(anchor="w", pady=(0, 8))
 
-        bar = tk.Frame(container, bg="#ffffff", highlightthickness=1, highlightbackground="#e5e7eb")
+        bar = tk.Frame(container, bg="#112240", highlightthickness=1, highlightbackground="#1e3a5f")
         bar.pack(fill=tk.X)
 
         selected = {"value": None}
@@ -386,16 +386,16 @@ class GraphTool:
             top.destroy()
 
         for i in range(1, 11):
-            b = tk.Button(bar, text=str(i), width=3, pady=8, bg="#ffffff", fg="#111827", relief=tk.SOLID, bd=1,
-                          activebackground="#111827", activeforeground="#ffffff",
+            b = tk.Button(bar, text=str(i), width=3, pady=8, bg="#1e3a5f", fg="#ccd6f6", relief=tk.FLAT, bd=0,
+                          activebackground="#64ffda", activeforeground="#0a192f",
                           command=lambda v=i: choose(v))
             b.grid(row=0, column=i-1, padx=(0 if i == 1 else 1), pady=1, sticky="nsew")
             bar.grid_columnconfigure(i-1, weight=1)
 
         # Abbrechen
-        actions = tk.Frame(container, bg="#ffffff")
+        actions = tk.Frame(container, bg="#112240")
         actions.pack(fill=tk.X, pady=(12, 0))
-        cancel = tk.Button(actions, text="Abbrechen", bg="#ffffff", fg="#111827", relief=tk.SOLID, bd=1, padx=12, pady=6,
+        cancel = tk.Button(actions, text="Abbrechen", bg="#1e3a5f", fg="#ccd6f6", relief=tk.FLAT, bd=0, padx=12, pady=6,
                            command=top.destroy)
         cancel.pack(side=tk.RIGHT)
 
@@ -440,12 +440,12 @@ class GraphTool:
             self._draw_graph_fallback()
             return
 
-        img = Image.new("RGB", (w * SCALE, h * SCALE), "#FFFFFF")
+        img = Image.new("RGB", (w * SCALE, h * SCALE), "#112240")
         dr = ImageDraw.Draw(img)
 
-        col_edge = "#D9D6EF"   # zartes Violettgrau
-        col_path = "#5CC5A7"   # freundliches Grünblau
-        col_outline = "#273043"
+        col_edge = "#1e3a5f"   # dunkelblau
+        col_path = "#64ffda"   # cyan
+        col_outline = "#64ffda"
         r_node = 15
 
         # Pfad
@@ -466,7 +466,7 @@ class GraphTool:
                 acc_list = data['accidents']
                 for idx in self._acc_indices(acc_list):
                     ax, ay = acc_list[idx]
-                    dr.ellipse([(ax - 6) * SCALE, (ay - 6) * SCALE, (ax + 6) * SCALE, (ay + 6) * SCALE], fill="#FF9FB3", outline=None)
+                    dr.ellipse([(ax - 6) * SCALE, (ay - 6) * SCALE, (ax + 6) * SCALE, (ay + 6) * SCALE], fill="#f87171", outline="#dc2626")
                 mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
                 # Runde Label-Box im Hintergrund
                 box_w, box_h, rad = 36, 22, 10
@@ -474,16 +474,16 @@ class GraphTool:
                 y0 = (mid_y - box_h / 2) * SCALE
                 x1b = (mid_x + box_w / 2) * SCALE
                 y1b = (mid_y + box_h / 2) * SCALE
-                dr.rounded_rectangle([x0, y0, x1b, y1b], radius=rad * SCALE, fill="#F5F3FF", outline="#D9D6EF", width=1 * SCALE)
+                dr.rounded_rectangle([x0, y0, x1b, y1b], radius=rad * SCALE, fill="#1e3a5f", outline="#0891b2", width=1 * SCALE)
                 label_boxes.append((mid_x, mid_y, str(int(data['weight']))) )
 
         # Knoten
         for node_id, (x, y) in self.nodes.items():
-            base = "#EDEBFF"
+            base = "#1e3a5f"
             if node_id == self.start_node:
-                base = "#6B5EFA"
+                base = "#0891b2"
             elif node_id == self.goal_node:
-                base = "#86A8FF"
+                base = "#22d3ee"
 
             x0 = (x - r_node) * SCALE
             y0 = (y - r_node) * SCALE
@@ -498,11 +498,11 @@ class GraphTool:
 
         # Texte als Overlay (Canvas für gute Schrift)
         for node_id, (x, y) in self.nodes.items():
-            txt_color = "#ffffff" if node_id in (self.start_node, self.goal_node) else "#16223A"
+            txt_color = "#ccd6f6"
             self.canvas.create_text(x, y, text=str(node_id), fill=txt_color, font=("Segoe UI", 10, "bold"))
 
         for (mx, my, txt) in label_boxes:
-            self.canvas.create_text(mx, my, text=txt, fill="#16223A", font=("Segoe UI", 9, "bold"))
+            self.canvas.create_text(mx, my, text=txt, fill="#ccd6f6", font=("Segoe UI", 9, "bold"))
 
     def _draw_graph_fallback(self):
         """Fallback ohne Pillow (keine Glättung)."""
@@ -511,30 +511,30 @@ class GraphTool:
             for i in range(len(self.path) - 1):
                 x1, y1 = self.nodes[self.path[i]]
                 x2, y2 = self.nodes[self.path[i + 1]]
-                self.canvas.create_line(x1, y1, x2, y2, fill="#796C61", width=5)
+                self.canvas.create_line(x1, y1, x2, y2, fill="#64ffda", width=5)
 
         for (node1, node2), data in self.edges.items():
             if node1 < node2:
                 x1, y1 = self.nodes[node1]
                 x2, y2 = self.nodes[node2]
-                self.canvas.create_line(x1, y1, x2, y2, fill="#D9D6EF", width=2)
+                self.canvas.create_line(x1, y1, x2, y2, fill="#1e3a5f", width=2)
                 acc_list = data['accidents']
                 for idx in self._acc_indices(acc_list):
                     ax, ay = acc_list[idx]
-                    self.canvas.create_oval(ax-6, ay-6, ax+6, ay+6, fill="#FF9FB3", outline="")
+                    self.canvas.create_oval(ax-6, ay-6, ax+6, ay+6, fill="#f87171", outline="#dc2626")
                 mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
                 # Ovale (Pill-)Label statt Rechteck
-                self.canvas.create_oval(mid_x-20, mid_y-12, mid_x+20, mid_y+12, fill="#F5F3FF", outline="#D9D6EF")
-                self.canvas.create_text(mid_x, mid_y, text=str(int(data['weight'])), fill="#16223A", font=("Segoe UI", 9, "bold"))
+                self.canvas.create_oval(mid_x-20, mid_y-12, mid_x+20, mid_y+12, fill="#1e3a5f", outline="#0891b2")
+                self.canvas.create_text(mid_x, mid_y, text=str(int(data['weight'])), fill="#ccd6f6", font=("Segoe UI", 9, "bold"))
 
         for node_id, (x, y) in self.nodes.items():
-            base = "#EDEBFF"
+            base = "#1e3a5f"
             if node_id == self.start_node:
-                base = "#6B5EFA"
+                base = "#0891b2"
             elif node_id == self.goal_node:
-                base = "#86A8FF"
-            self.canvas.create_oval(x-15, y-15, x+15, y+15, fill=base, outline="#273043", width=1)
-            txt_color = "#ffffff" if node_id in (self.start_node, self.goal_node) else "#16223A"
+                base = "#22d3ee"
+            self.canvas.create_oval(x-15, y-15, x+15, y+15, fill=base, outline="#64ffda", width=1)
+            txt_color = "#ccd6f6"
             self.canvas.create_text(x, y, text=str(node_id), fill=txt_color, font=("Segoe UI", 10, "bold"))
     
     def calculate_path(self):
