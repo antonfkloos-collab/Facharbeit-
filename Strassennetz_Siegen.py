@@ -54,7 +54,7 @@ start = ox.distance.nearest_nodes(G, start_coords[1], start_coords[0])
 ziel = ox.distance.nearest_nodes(G, ziel_coords[1], ziel_coords[0])
 
 # ---------------------------------------------------
-# 2. Dijkstra-Algorithmus (eigene Implementierung!)
+# 2. Dijkstra-Algorithmus 
 # ---------------------------------------------------
 def dijkstra(graph, start, ziel):
     # Initialize distances and previous pointers
@@ -422,10 +422,20 @@ edges_gdf['ai_weight_fast'] = 1.0 + (1.0 - p_main) * ai_strengths['fast']
 edges_gdf['ai_weight_safe'] = 1.0 + (1.0 - p_main) * ai_strengths['safe']
 edges_gdf['ai_weight_mix'] = 1.0 + (1.0 - p_main) * ai_strengths['mix']
 
-# final weights: include road_penalty and per-route AI weight
-edges_gdf["weight_fast"] = edges_gdf["length"] * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_fast"]
-edges_gdf["weight_safe"] = edges_gdf["risk_norm"] * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_safe"]
-edges_gdf["weight_mix"] = (edges_gdf["len_norm"] * (1 - mix_param) + edges_gdf["risk_norm"] * mix_param) * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_mix"]
+# final weights: use simple normalized cost functions (user-proposed)
+# - fast:  0.9 * length_norm + 0.1 * risk_norm
+# - safe:  risk_norm (minimize risk)
+# - mix:   0.55 * length_norm + 0.45 * risk_norm
+# These are in [0,1]; if you want to keep AI/road-penalties multiply afterwards.
+edges_gdf["weight_fast"] = 0.9 * edges_gdf["len_norm"] + 0.1 * edges_gdf["risk_norm"]
+edges_gdf["weight_safe"] = edges_gdf["risk_norm"]
+edges_gdf["weight_mix"] = 0.55 * edges_gdf["len_norm"] + 0.45 * edges_gdf["risk_norm"]
+
+# Optional: re-apply road/AI penalties so that e.g. 'safe' still prefers main roads when desired.
+# If you prefer the pure normalized costs above, comment out the next three lines.
+edges_gdf["weight_fast"] = edges_gdf["weight_fast"] * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_fast"]
+edges_gdf["weight_safe"] = edges_gdf["weight_safe"] * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_safe"]
+edges_gdf["weight_mix"] = edges_gdf["weight_mix"] * edges_gdf["highway_weight"] * edges_gdf["road_penalty"] * edges_gdf["ai_weight_mix"]
 
 # Baue gerichteten Graphen mit minimalen Gewichten pro (u,v)
 H = nx.DiGraph()
