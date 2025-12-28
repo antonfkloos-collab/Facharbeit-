@@ -300,26 +300,27 @@ def highway_penalty_tag(h):
     if isinstance(h, (list, tuple)):
         h = h[0]
     mapping = {
-        'motorway': 0.6,
-        'trunk': 0.7,
-        'primary': 0.8,
-        'secondary': 0.9,
-        'tertiary': 1.0,
-        'unclassified': 1.1,
-        'residential': 1.5,
-        'service': 1.6,
-        'living_street': 1.8,
-        'track': 2.0,
-        'path': 2.5,
-        'cycleway': 2.0,
-        'footway': 2.5
+        # Reduced range: values closer to 1 reduce the multiplicative impact
+        'motorway': 0.95,
+        'trunk': 0.97,
+        'primary': 1.00,
+        'secondary': 1.03,
+        'tertiary': 1.06,
+        'unclassified': 1.08,
+        'residential': 1.12,
+        'service': 1.14,
+        'living_street': 1.18,
+        'track': 1.20,
+        'path': 1.22,
+        'cycleway': 1.10,
+        'footway': 1.20
     }
     return mapping.get(str(h), 1.2)
 
 edges_gdf['road_penalty'] = edges_gdf['highway'].apply(highway_penalty_tag)
 
 # Normalisieren und berechne Fahrzeit (T) sowie Risiko (R)
-mix_param = 1.0
+mix_param = 0.5
 
 # Länge in km
 edges_gdf['length_km'] = edges_gdf['length'] / 1000.0
