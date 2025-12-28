@@ -214,10 +214,10 @@ class GraphTool:
             self.edges[(node2, node1)] = {'weight': w, 'accidents': []}  # Bidirektional
             self.draw_graph()
 
-    def generate_random_graph(self, n_nodes: int = 12, extra_edges: int = 6):
-        """Erzeugt ein kleines verbundenes Zufalls-Straßennetz.
-        - n_nodes: Anzahl Knoten (klein halten)
-        - Jeder Kante bekommt Gewicht 1–10 und 1–10 Unfälle (als Punkte auf der Kante)
+    def generate_random_graph(self, n_nodes: int = 20, extra_edges: int = 12):
+        """Erzeugt ein größeres verbundenes Zufalls-Straßennetz.
+        - n_nodes: Anzahl Knoten
+        - Jeder Kante bekommt Gewicht 1–10 und 3–15 Unfälle (als Punkte auf der Kante)
         """
         # Canvas-Größe ermitteln
         self.root.update_idletasks()
@@ -292,8 +292,8 @@ class GraphTool:
                 w_val = random.randint(1, 10)
                 self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
                 self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-                # Unfälle generieren (1–10 Punkte auf der Kante)
-                acc_n = random.randint(1, 10)
+                # Unfälle generieren (3–15 Punkte auf der Kante)
+                acc_n = random.randint(3, 15)
                 x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
                 for _ in range(acc_n):
                     t = random.random()
@@ -319,7 +319,7 @@ class GraphTool:
             w_val = random.randint(1, 10)
             self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
             self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-            acc_n = random.randint(1, 10)
+            acc_n = random.randint(3, 15)
             x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
             for _ in range(acc_n):
                 t = random.random()
@@ -386,7 +386,38 @@ class GraphTool:
             C = (xa, ya); D = (xb, yb)
             if self._segments_intersect(A, B, C, D):
                 return True
+            # Prüfe Mindestabstand zwischen parallelen Kanten (40 px)
+            if self._segments_too_close(A, B, C, D, min_dist=40):
+                return True
         return False
+    
+    def _segments_too_close(self, A, B, C, D, min_dist=40):
+        """Prüft, ob zwei Liniensegmente zu nah beieinander sind."""
+        # Berechne Abstand von Mittelpunkten der Segmente
+        mid_AB = ((A[0] + B[0]) / 2, (A[1] + B[1]) / 2)
+        mid_CD = ((C[0] + D[0]) / 2, (C[1] + D[1]) / 2)
+        
+        # Wenn Mittelpunkte zu nah, prüfe genauer
+        dist_mid = math.hypot(mid_AB[0] - mid_CD[0], mid_AB[1] - mid_CD[1])
+        if dist_mid > min_dist * 3:
+            return False
+        
+        # Berechne minimalen Abstand zwischen den Segmenten
+        def point_to_segment_dist(px, py, ax, ay, bx, by):
+            dx, dy = bx - ax, by - ay
+            if dx == dy == 0:
+                return math.hypot(px - ax, py - ay)
+            t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+            proj_x, proj_y = ax + t * dx, ay + t * dy
+            return math.hypot(px - proj_x, py - proj_y)
+        
+        # Prüfe Abstände von Endpunkten zu Segmenten
+        d1 = point_to_segment_dist(A[0], A[1], C[0], C[1], D[0], D[1])
+        d2 = point_to_segment_dist(B[0], B[1], C[0], C[1], D[0], D[1])
+        d3 = point_to_segment_dist(C[0], C[1], A[0], A[1], B[0], B[1])
+        d4 = point_to_segment_dist(D[0], D[1], A[0], A[1], B[0], B[1])
+        
+        return min(d1, d2, d3, d4) < min_dist
 
     def pick_weight(self):
         """Öffnet einen minimalistischen Dialog mit 1–10 als Klickleiste."""
@@ -588,7 +619,7 @@ class GraphTool:
                         neighbor = n2
                     elif n2 == current_node:
                         neighbor = n1
-                    if neighbor and neighbor not in visited:
+                    if neighbor is not None and neighbor not in visited:
                         cost = cost_func(data)
                         new_dist = current_dist + cost
                         if new_dist < distances[neighbor]:
@@ -604,53 +635,120 @@ class GraphTool:
                     current = previous[current]
             return path, distances[self.goal_node]
 
-        # Kostenfunktionen mit Normierung, damit "Misch" nicht faktisch "Sicher" ist
-        all_weights = [max(1, d['weight']) for d in self.edges.values()] or [1]
+        # Compute W_lambda cost model per-edge so demo matches main script
+        # Model parameters
+        alpha = 1.0
+        road_penalty = 1.0
+        # Use exact extremes for demo: fast -> only T, safe -> only R
+        route_lambdas = {"fast": 0.0, "mix": 0.5, "safe": 1.0}
+
+        # Prepare normalization baselines
+        # Use the raw weight as float (allow 1.0 to be a valid short edge).
+        # Protect against zero or negative weights by replacing them with a small epsilon.
+        EPS = 1e-6
+        def edge_length(d):
+            try:
+                L = float(d.get('weight', 1.0))
+            except Exception:
+                L = 1.0
+            if L <= 0:
+                L = EPS
+            return L
+
+        all_lengths = [edge_length(d) for d in self.edges.values()] or [1.0]
         all_accs = [len(d['accidents']) for d in self.edges.values()] or [0]
-        w_max = max(all_weights) if all_weights else 1
-        a_max = max(all_accs) if all_accs else 1
-        def w_norm(d):
-            return (max(1, d['weight'])) / w_max
-        def a_norm(d):
-            return (len(d['accidents'])) / a_max if a_max > 0 else 0.0
+        max_T = max(all_lengths) if all_lengths else 1.0
 
-        # Schnell: nahezu nur Länge, minimale Unfall-Tie-Breaker
-        def cost_fast(data):
-            return 0.9 * w_norm(data) + 0.1 * a_norm(data)
-        # Sicher: strikt Unfälle minimieren (exakte Summe), kein Einfluss der Länge
-        def cost_safe(data):
-            return len(data['accidents'])
-        # Misch: echte Balance, nicht zu unfall-lastig
-        def cost_mix(data):
-            return 0.55 * w_norm(data) + 0.45 * a_norm(data)
+        # Precompute raw R values for normalization
+        R_vals = []
+        for d in self.edges.values():
+            length = edge_length(d)
+            A = len(d['accidents'])
+            R_raw = (A + alpha) / length * road_penalty
+            R_vals.append(R_raw)
+        max_R = max(R_vals) if R_vals and max(R_vals) > 0 else 1.0
 
-        path_fast, dist_fast = dijkstra(cost_fast)
-        path_safe, dist_safe = dijkstra(cost_safe)
-        path_mix, dist_mix = dijkstra(cost_mix)
+        def make_cost(route_key):
+            lam = route_lambdas.get(route_key, 0.5)
+            def cost(d):
+                T = edge_length(d)
+                T_norm = T / max_T if max_T > 0 else 0.0
+                R = (len(d['accidents']) + alpha) / edge_length(d) * road_penalty
+                R_norm = R / max_R if max_R > 0 else 0.0
+                return (1.0 - lam) * T_norm + lam * R_norm
+            return cost
+
+        path_fast, dist_fast = dijkstra(make_cost('fast'))
+        path_safe, dist_safe = dijkstra(make_cost('safe'))
+        path_mix, dist_mix = dijkstra(make_cost('mix'))
 
         self.path_fast = path_fast
         self.path_safe = path_safe
         self.path_mix = path_mix
 
+        # Helper to compute summary metrics along a path
+        def summarize_path(path, route_key):
+            if not path or len(path) < 2:
+                return {"sum_T": 0.0, "sum_R": 0.0, "sum_W": 0.0, "sum_A": 0}
+            lam = route_lambdas.get(route_key, 0.5)
+            sum_T = 0.0
+            sum_R = 0.0
+            sum_W = 0.0
+            sum_A = 0
+            for i in range(len(path) - 1):
+                u = path[i]; v = path[i+1]
+                d = self.edges.get((u, v)) or self.edges.get((v, u))
+                if not d:
+                    continue
+                L = edge_length(d)
+                A = len(d.get('accidents', []))
+                T_norm = L / max_T if max_T > 0 else 0.0
+                R_raw = (A + alpha) / L * road_penalty
+                R_norm = R_raw / max_R if max_R > 0 else 0.0
+                W = (1.0 - lam) * T_norm + lam * R_norm
+                sum_T += L
+                sum_R += R_raw
+                sum_W += W
+                sum_A += A
+            return {"sum_T": sum_T, "sum_R": sum_R, "sum_W": sum_W, "sum_A": sum_A}
+
         # Nur die ausgewählte Variante anzeigen
         choice = self.route_choice.get()
         if choice == "fast":
             if path_fast:
-                messagebox.showinfo("Route – Schnell", f"Schnellste Route:\n{' → '.join(map(str, path_fast))}\nKosten: {dist_fast:.2f}")
+                summ = summarize_path(path_fast, 'fast')
+                msg = (
+                    f"Schnellste Route:\n{' → '.join(map(str, path_fast))}\n"
+                    f"Kosten: {dist_fast:.2f}\n"
+                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
+                )
+                messagebox.showinfo("Route – Schnell", msg)
                 self.path = self.path_fast
             else:
                 messagebox.showinfo("Route – Schnell", "Kein Pfad gefunden!")
                 self.path = []
         elif choice == "safe":
             if path_safe:
-                messagebox.showinfo("Route – Sicher", f"Sicherste Route:\n{' → '.join(map(str, path_safe))}\nUnfälle (Summe pro Kante): {dist_safe:.0f}")
+                summ = summarize_path(path_safe, 'safe')
+                msg = (
+                    f"Sicherste Route:\n{' → '.join(map(str, path_safe))}\n"
+                    f"Unfälle (Summe pro Kante): {dist_safe:.0f}\n"
+                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
+                )
+                messagebox.showinfo("Route – Sicher", msg)
                 self.path = self.path_safe
             else:
                 messagebox.showinfo("Route – Sicher", "Kein Pfad gefunden!")
                 self.path = []
         else:
             if path_mix:
-                messagebox.showinfo("Route – Misch", f"Gemischte Route:\n{' → '.join(map(str, path_mix))}\nKosten: {dist_mix:.2f}")
+                summ = summarize_path(path_mix, 'mix')
+                msg = (
+                    f"Gemischte Route:\n{' → '.join(map(str, path_mix))}\n"
+                    f"Kosten: {dist_mix:.2f}\n"
+                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
+                )
+                messagebox.showinfo("Route – Misch", msg)
                 self.path = self.path_mix
             else:
                 messagebox.showinfo("Route – Misch", "Kein Pfad gefunden!")

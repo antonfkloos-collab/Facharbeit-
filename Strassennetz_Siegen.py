@@ -243,8 +243,9 @@ from shapely.geometry import LineString
 # Du kannst hier ein Dateipattern (glob) oder einzelne Dateien angeben.
 import glob
 accident_params = {
-    # pattern relative/absolute: suche z.B. "data/Unfallorte*_LinRef.csv" oder ein Ordner
-    'files_pattern': r"C:\\Users\\anton\\Documents\\GitHub\\Facharbeit-NAvigation\\unfaelle_siegenwittgenstein.csv\\Unfallorte*_LinRef.csv*",
+    # pattern relative/absolute: Suche alle CSVs im Repo-Ordner `data/unfaelle`
+    # Lege deine Unfall-CSV-Dateien in `./data/unfaelle/` ab (relative zum Repo root).
+    'files_pattern': os.path.join(os.path.dirname(__file__), 'data', 'unfaelle', '*.csv'),
     # gamma: 1.0 = gleiche Gewichtung, <1 ältere Jahre schwächt ab (z.B. 0.8)
     'gamma': 0.85,
     # optional: explizite Liste von Jahren oder None um alle in den Dateien gefundenen Jahre zu nutzen
@@ -293,22 +294,8 @@ min_lat, max_lat = 50.82, 50.90
 df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_lon) &
                 (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
 
-# Jahresgewichtung: berechne year_weight per Unfallpunkt
-current_year = pd.Timestamp.now().year
-gamma = float(accident_params.get('gamma', 1.0) or 1.0)
-def _year_weight(y):
-    try:
-        if pd.isna(y):
-            return 1.0
-        y = int(y)
-        return gamma ** (current_year - y)
-    except Exception:
-        return 1.0
-
-if 'UJAHR' in df_acc.columns:
-    df_acc['year_weight'] = df_acc['UJAHR'].apply(_year_weight)
-else:
-    df_acc['year_weight'] = 1.0
+# Keine Jahresgewichtung: alle Unfälle gleich behandeln (kein Zerfall nach Jahren)
+# Wir zählen pro Unfallpunkt einfach A_count; ältere/newer Jahre werden nicht unterschiedlich gewichtet.
 
 gdf_acc = gpd.GeoDataFrame(df_acc, geometry=gpd.points_from_xy(df_acc["XGCSWGS84"], df_acc["YGCSWGS84"]), crs="EPSG:4326").to_crs(3857)
 
@@ -339,16 +326,14 @@ edges_gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326").to_crs(3857)
 # Buffer Kanten und zähle Unfälle in 20m Umgebung
 buffers = edges_gdf.copy()
 buffers["geometry"] = buffers.geometry.buffer(20)
-joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within")
-# stelle sicher, dass year_weight existiert
-if 'year_weight' not in joined.columns:
-    joined['year_weight'] = 1.0
 
-# ungewichtete Anzahl (A_count) und gewichtete Summe (A_weighted)
+joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within")
+
+# ungewichtete Anzahl (A_count) pro Kante
 counts_unweighted = joined.groupby("index_right").size()
-counts_weighted = joined.groupby("index_right")['year_weight'].sum()
 edges_gdf['A_count'] = counts_unweighted.reindex(edges_gdf.index).fillna(0).astype(int)
-edges_gdf['A_weighted'] = counts_weighted.reindex(edges_gdf.index).fillna(0.0)
+# A_weighted gleich A_count (keine Jahresgewichtung)
+edges_gdf['A_weighted'] = edges_gdf['A_count'].astype(float)
 
 # Risiko definieren (gewichtete Unfälle pro km)
 edges_gdf["risk"] = edges_gdf.apply(lambda r: r["A_weighted"] / (max(r["length"], 1) / 1000.0), axis=1)
@@ -381,7 +366,7 @@ def highway_penalty_tag(h):
 edges_gdf['road_penalty'] = edges_gdf['highway'].apply(highway_penalty_tag)
 
 # Normalisieren und berechne Fahrzeit (T) sowie Risiko (R)
-mix_param = 0.5
+mix_param = 0.3
 
 # Länge in km
 edges_gdf['length_km'] = edges_gdf['length'] / 1000.0
@@ -414,6 +399,8 @@ edges_gdf['R_norm'] = edges_gdf['R'] / R_max
 # Beispiel: setze r_weight hoch für 'safe', t_weight hoch für 'fast'
 route_params = {
     'fast': {'t_weight': 1.0, 'r_weight': 0.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
+    # Safe route: Risiko wird ausschließlich über R(e) = beta * (A_count + alpha) / L berechnet.
+    # Keine zusätzliche Multiplikation der finalen Gewichte mehr.
     'safe': {'t_weight': 0.0, 'r_weight': 1.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
     'mix':  {'t_weight': 1.0 - mix_param, 'r_weight': mix_param, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0}
 }
@@ -421,6 +408,7 @@ route_params = {
 # Berechne finale Gewichte aus den konfigurierten Parametern
 for kind, p in route_params.items():
     base = p['t_weight'] * p.get('t_scale', 1.0) * edges_gdf['T_norm'] + p['r_weight'] * p.get('r_scale', 1.0) * edges_gdf['R_norm']
+    # optional: apply road_penalty multiplier (keeps its effect inside the weight before normalization)
     if p.get('use_road_penalty', False):
         base = base * edges_gdf['road_penalty'] * p.get('road_penalty_mul', 1.0)
     edges_gdf[f'weight_{kind}'] = base
@@ -546,7 +534,7 @@ for kind, node_list in paths.items():
 # Layer control
 folium.LayerControl().add_to(m)
 
-# Unfälle als Punkte auf der Karte markieren – nur entlang der Route
+# Unfälle als Punkte auf der Karte markieren – alle Punkte innerhalb eines äußeren Puffers
 from shapely.geometry import LineString
 from shapely.ops import unary_union
 route_lines = []
@@ -577,10 +565,34 @@ def val_to_yesno(v):
 
 vehicle_cols = ["IstRad", "IstPKW", "IstFuss", "IstKrad", "IstGkfz", "IstSonstige"]
 
-# accidents exactly on/very near route
-on_route = gdf_acc_plot[gdf_acc_plot.geometry.within(inner_buffer)]
-# accidents near route but not inside inner buffer
-near_route = gdf_acc_plot[gdf_acc_plot.geometry.within(outer_buffer) & (~gdf_acc_plot.geometry.within(inner_buffer))]
+# Wähle alle Unfälle innerhalb des äußeren Puffers (zeigt auch die 'neben dran')
+selected_acc = gdf_acc_plot[gdf_acc_plot.geometry.within(outer_buffer)].copy()
+
+# Farbe pro Jahr (Palette vermeidet Route-Farben)
+palette = ['#ff7f00', '#984ea3', '#f781bf', '#a65628', '#ffd92f', '#999999', '#00ced1', '#8dd3c7', '#bebada']
+years = []
+if 'UJAHR' in selected_acc.columns:
+    years = sorted([int(y) for y in selected_acc['UJAHR'].dropna().unique()])
+else:
+    years = []
+
+# Spezielle Farben: vier gewünschte Hex-Farben für die vier jüngsten Jahre
+# Reihenfolge (jüngstes Jahr zuerst): #05186A, #ac8613, #0cdad3, #B636B6
+special_colors = ["#05186A", "#ac8613", "#0cdad3", "#B636B6"]
+year_to_color = {}
+if years:
+    # ordne die jüngsten Jahre zuerst den special_colors zu
+    recent = sorted(years, reverse=True)
+    for i, y in enumerate(recent):
+        if i < len(special_colors):
+            year_to_color[y] = special_colors[i]
+    # ältere Jahre bekommen Farben aus der Palette (cyclic)
+    older = [y for y in years if y not in year_to_color]
+    for i, y in enumerate(sorted(older)):
+        year_to_color[y] = palette[i % len(palette)]
+
+# Fallbackfarbe für unbekanntes Jahr
+unknown_color = '#666666'
 
 def build_popup(acc):
     lines = []
@@ -596,7 +608,6 @@ def build_popup(acc):
         if vc in acc.index:
             val = val_to_yesno(acc[vc])
             if val == 'Ja':
-                # map column names to nicer German labels
                 label = vc.replace('Ist', '')
                 involved.append(label)
     if involved:
@@ -608,31 +619,46 @@ def build_popup(acc):
     for col in ["LICHTVERH", "WETTER", "MONAT", "WOCHENTAG"]:
         if col in acc.index:
             lines.append(f"{col}: {acc[col]}")
-    return f"Unfallpunkt:<br>Lat: {acc['YGCSWGS84']}<br>Lon: {acc['XGCSWGS84']}<br>" + "<br>".join(lines)
+    # show year if available
+    if 'UJAHR' in acc.index and not pd.isna(acc['UJAHR']):
+        lines.insert(0, f"Jahr: {int(acc['UJAHR'])}")
+    return f"Unfallpunkt:<br>Lat: {acc.geometry.y:.6f}<br>Lon: {acc.geometry.x:.6f}<br>" + "<br>".join(lines)
 
-for _, acc in on_route.iterrows():
+# Zeichne ausgewählte Unfälle — dünnere schwarze Ränder (weight)
+for _, acc in selected_acc.iterrows():
     popup_text = build_popup(acc)
-    folium.CircleMarker(
-        location=[acc.geometry.y, acc.geometry.x],
-        radius=5,
-        color="black",
-        fill=True,
-        fill_color="orange",
-        fill_opacity=0.95,
-        popup=folium.Popup(popup_text, max_width=350)
-    ).add_to(m)
-
-for _, acc in near_route.iterrows():
-    popup_text = build_popup(acc)
+    yr = None
+    if 'UJAHR' in acc.index and not pd.isna(acc['UJAHR']):
+        try:
+            yr = int(acc['UJAHR'])
+        except Exception:
+            yr = None
+    fill_col = year_to_color.get(yr, unknown_color)
     folium.CircleMarker(
         location=[acc.geometry.y, acc.geometry.x],
         radius=4,
         color="black",
+        weight=0.7,
         fill=True,
-        fill_color="blue",
-        fill_opacity=0.6,
-        popup=folium.Popup("In Nähe der Route:<br>" + popup_text, max_width=350)
+        fill_color=fill_col,
+        fill_opacity=0.85,
+        popup=folium.Popup(popup_text, max_width=350)
     ).add_to(m)
+
+# Kleine Legende für Jahresfarben
+from branca.element import Html
+legend_items = []
+for y in years:
+    legend_items.append(f"<div><span style='display:inline-block;width:14px;height:12px;background:{year_to_color[y]};margin-right:6px;'></span>{y}</div>")
+legend_html = """
+<div style='position: fixed; bottom: 50px; left: 10px; z-index:9999; background: white; padding: 8px; border:1px solid #ccc; font-size:12px;'>
+<b>Unfälle nach Jahr</b><br/>
+%s
+</div>
+""" % ("".join(legend_items) if legend_items else "<div>Jahr: unbekannt</div>")
+
+legend = Html(legend_html, script=True)
+m.get_root().html.add_child(legend)
 
 # Karte speichern und öffnen
 out_path = os.path.abspath("route_eiserfeld_siegen.html")
