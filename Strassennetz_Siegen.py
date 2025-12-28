@@ -400,9 +400,6 @@ if USE_AI and mask.sum() >= 20:
         pref = (pred - pmin) / (pmax - pmin)
 else:
     pref = 1.0 - edges_gdf['risk_norm'].fillna(0).values
-else:
-    # deterministic heuristic: prefer low-risk edges
-    pref = 1.0 - edges_gdf['risk_norm'].fillna(0).values
 
 # Convert preference to highway_weight factor scaled by route_pref_strength
 pref = np.clip(pref, 0.0, 1.0)
