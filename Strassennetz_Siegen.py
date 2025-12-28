@@ -239,15 +239,52 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import LineString
 
-# Lade Unfalldaten (2024) – nur Siegen/Eiserfeld
-acc_file = r"C:\Users\anton\Documents\GitHub\Facharbeit-NAvigation\unfaelle_siegenwittgenstein.csv\Unfallorte2024_LinRef.csv.csv"
-try:
-    df_acc = pd.read_csv(acc_file, sep=";", decimal=",", low_memory=False)
-except Exception as e:
-    raise RuntimeError(f"Unfalldatei {acc_file} konnte nicht geladen werden: {e}")
+# Lade Unfalldaten (mehrere Jahre möglich)
+# Du kannst hier ein Dateipattern (glob) oder einzelne Dateien angeben.
+import glob
+accident_params = {
+    # pattern relative/absolute: suche z.B. "data/Unfallorte*_LinRef.csv" oder ein Ordner
+    'files_pattern': r"C:\\Users\\anton\\Documents\\GitHub\\Facharbeit-NAvigation\\unfaelle_siegenwittgenstein.csv\\Unfallorte*_LinRef.csv*",
+    # gamma: 1.0 = gleiche Gewichtung, <1 ältere Jahre schwächt ab (z.B. 0.8)
+    'gamma': 0.85,
+    # optional: explizite Liste von Jahren oder None um alle in den Dateien gefundenen Jahre zu nutzen
+    'years': None,
+}
 
-df_acc["XGCSWGS84"] = pd.to_numeric(df_acc["XGCSWGS84"], errors="coerce")
-df_acc["YGCSWGS84"] = pd.to_numeric(df_acc["YGCSWGS84"], errors="coerce")
+# Suche Dateien
+files = glob.glob(accident_params['files_pattern'])
+if not files:
+    # Fallback: versuche die alte hartkodierte Datei (falls vorhanden)
+    fallback = r"C:\Users\anton\Documents\GitHub\Facharbeit-NAvigation\unfaelle_siegenwittgenstein.csv\Unfallorte2024_LinRef.csv.csv"
+    if os.path.exists(fallback):
+        files = [fallback]
+    else:
+        raise RuntimeError(f"Keine Unfalldateien gefunden mit Pattern {accident_params['files_pattern']} und kein Fallback vorhanden.")
+
+dfs = []
+year_re = re.compile(r"(19|20)\d{2}")
+for f in files:
+    try:
+        df = pd.read_csv(f, sep=";", decimal=",", low_memory=False)
+    except Exception as e:
+        print(f"Warnung: Datei {f} konnte nicht gelesen werden: {e}")
+        continue
+    # versuche Jahr zu ermitteln: erst aus Spalte 'UJAHR' falls vorhanden, sonst aus Dateiname
+    if 'UJAHR' in df.columns:
+        df['UJAHR'] = pd.to_numeric(df['UJAHR'], errors='coerce').astype('Int64')
+    else:
+        m = year_re.search(os.path.basename(f))
+        df['UJAHR'] = int(m.group(0)) if m else pd.NA
+    dfs.append(df)
+
+if not dfs:
+    raise RuntimeError("Keine gültigen Unfalldaten eingelesen.")
+
+df_acc = pd.concat(dfs, ignore_index=True)
+
+# Nur numerische Koordinaten behalten
+df_acc["XGCSWGS84"] = pd.to_numeric(df_acc.get("XGCSWGS84", df_acc.get('LINREFX')), errors="coerce")
+df_acc["YGCSWGS84"] = pd.to_numeric(df_acc.get("YGCSWGS84", df_acc.get('LINREFY')), errors="coerce")
 df_acc = df_acc.dropna(subset=["XGCSWGS84", "YGCSWGS84"])
 
 # Filter: nur Unfälle im Bereich Siegen/Eiserfeld (Bounding Box)
@@ -255,6 +292,23 @@ min_lon, max_lon = 7.98, 8.08
 min_lat, max_lat = 50.82, 50.90
 df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_lon) &
                 (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
+
+# Jahresgewichtung: berechne year_weight per Unfallpunkt
+current_year = pd.Timestamp.now().year
+gamma = float(accident_params.get('gamma', 1.0) or 1.0)
+def _year_weight(y):
+    try:
+        if pd.isna(y):
+            return 1.0
+        y = int(y)
+        return gamma ** (current_year - y)
+    except Exception:
+        return 1.0
+
+if 'UJAHR' in df_acc.columns:
+    df_acc['year_weight'] = df_acc['UJAHR'].apply(_year_weight)
+else:
+    df_acc['year_weight'] = 1.0
 
 gdf_acc = gpd.GeoDataFrame(df_acc, geometry=gpd.points_from_xy(df_acc["XGCSWGS84"], df_acc["YGCSWGS84"]), crs="EPSG:4326").to_crs(3857)
 
@@ -286,11 +340,18 @@ edges_gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326").to_crs(3857)
 buffers = edges_gdf.copy()
 buffers["geometry"] = buffers.geometry.buffer(20)
 joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within")
-counts = joined.groupby("index_right").size()
-edges_gdf["accidents"] = counts.reindex(edges_gdf.index).fillna(0).astype(int)
+# stelle sicher, dass year_weight existiert
+if 'year_weight' not in joined.columns:
+    joined['year_weight'] = 1.0
 
-# Risiko definieren (Unfälle pro km)
-edges_gdf["risk"] = edges_gdf.apply(lambda r: r["accidents"] / (max(r["length"], 1) / 1000.0), axis=1)
+# ungewichtete Anzahl (A_count) und gewichtete Summe (A_weighted)
+counts_unweighted = joined.groupby("index_right").size()
+counts_weighted = joined.groupby("index_right")['year_weight'].sum()
+edges_gdf['A_count'] = counts_unweighted.reindex(edges_gdf.index).fillna(0).astype(int)
+edges_gdf['A_weighted'] = counts_weighted.reindex(edges_gdf.index).fillna(0.0)
+
+# Risiko definieren (gewichtete Unfälle pro km)
+edges_gdf["risk"] = edges_gdf.apply(lambda r: r["A_weighted"] / (max(r["length"], 1) / 1000.0), axis=1)
 
 # Straßenklassen-Strafe basierend auf OSM 'highway' Tag
 def highway_penalty_tag(h):
@@ -332,10 +393,10 @@ edges_gdf['speed_kmh'] = edges_gdf['highway'].apply(lambda h: _default_speed_for
 eps = 1e-6
 edges_gdf['T_sec'] = edges_gdf.apply(lambda r: (r['length_km'] / max(eps, r['speed_kmh'])) * 3600.0, axis=1)
 
-# Risiko R(e) = beta(e) * (accidents + alpha) / length_km
+# Risiko R(e) = beta(e) * (A_weighted + alpha) / length_km
 # alpha wird konstant auf 1 gesetzt (Glättung), beta nutzen wir aus 'road_penalty'
 alpha = 1
-edges_gdf['R'] = edges_gdf.apply(lambda r: (r['road_penalty'] * (r['accidents'] + alpha) / max(eps, r['length_km'])) if r['length_km'] > 0 else 0.0, axis=1)
+edges_gdf['R'] = edges_gdf.apply(lambda r: (r['road_penalty'] * (r['A_weighted'] + alpha) / max(eps, r['length_km'])) if r['length_km'] > 0 else 0.0, axis=1)
 
 # Normiere auf 0..1
 T_max = edges_gdf['T_sec'].max() or 1.0
