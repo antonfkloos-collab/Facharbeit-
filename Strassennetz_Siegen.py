@@ -13,9 +13,6 @@ from sklearn.linear_model import RidgeCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 import re
-import argparse
-import csv
-import sys
 # -*- coding: utf-8 -*-
 # Facharbeit: Navigation mit Unfalldaten (Autonomes Fahren)
 
@@ -40,42 +37,6 @@ def load_graph(place_name="Siegen, Germany"):
 
 G = load_graph("Siegen, Germany")
 
-# -----------------------
-# Konfigurierbare Parameter
-# -----------------------
-# Default: use the theoretical (paper-style) weights. Can be overridden via CLI.
-ALPHA = 1.0  # Laplace smoothing
-BETA_MAPPING = {
-    'motorway': 0.6,
-    'primary': 0.8,
-    'secondary': 1.0,
-    'residential': 1.5,
-    'service': 2.0
-}
-LAMBDA_VALUES_DEFAULT = {'fast': 0.1, 'safe': 1.0, 'mix': 0.45}
-APPLY_PENALTIES_DEFAULT = False
-MODE_DEFAULT = 'theoretical'  # 'practical' | 'theoretical' | 'compare'
-OUT_CSV_DEFAULT = 'weights_comparison.csv'
-
-def parse_args():
-    p = argparse.ArgumentParser(description='Route calculation with risk-aware weights')
-    p.add_argument('--mode', choices=['practical', 'theoretical', 'compare'], default=MODE_DEFAULT)
-    p.add_argument('--alpha', type=float, default=ALPHA)
-    p.add_argument('--lambda-fast', type=float, default=LAMBDA_VALUES_DEFAULT['fast'])
-    p.add_argument('--lambda-safe', type=float, default=LAMBDA_VALUES_DEFAULT['safe'])
-    p.add_argument('--lambda-mix', type=float, default=LAMBDA_VALUES_DEFAULT['mix'])
-    p.add_argument('--apply-penalties', action='store_true')
-    p.add_argument('--out-csv', type=str, default=OUT_CSV_DEFAULT)
-    return p.parse_args()
-
-args = parse_args()
-ALPHA = args.alpha
-LAMBDA_VALUES = {'fast': args.lambda_fast, 'safe': args.lambda_safe, 'mix': args.lambda_mix}
-APPLY_PENALTIES = args.apply_penalties or APPLY_PENALTIES_DEFAULT
-MODE = args.mode
-OUT_CSV = args.out_csv
-
-print(f"Mode={MODE}, alpha={ALPHA}, lambdas={LAMBDA_VALUES}, apply_penalties={APPLY_PENALTIES}")
 # Start- und Zielpunkte (lat, lon)
 try:
     start_coords = ox.geocode("Gesamtschule Eiserfeld, Siegen, Germany")
@@ -317,7 +278,8 @@ for u, v, key, data in G.edges(keys=True, data=True):
     highway = None
     if isinstance(data, dict):
         highway = data.get("highway")
-    rows.append({"u": u, "v": v, "key": key, "length": length_m, "geometry": geom, "highway": highway})
+    # store original edge attributes as well to extract maxspeed later
+    rows.append({"u": u, "v": v, "key": key, "length": length_m, "geometry": geom, "highway": highway, "attr": data if isinstance(data, dict) else {}})
 
 edges_gdf = gpd.GeoDataFrame(rows, crs="EPSG:4326").to_crs(3857)
 
@@ -328,26 +290,21 @@ joined = gpd.sjoin(gdf_acc, buffers[["geometry"]], how="left", predicate="within
 counts = joined.groupby("index_right").size()
 edges_gdf["accidents"] = counts.reindex(edges_gdf.index).fillna(0).astype(int)
 
-# Risiko definieren gemäß Facharbeit-Formel:
-# R_base(e) = (A(e) + ALPHA) / L(e)  (L in km)
-# R(e) = R_base(e) * beta(e)
+# Neues Risiko-Modell: R(e) = beta(e) * (A(e) + alpha) / L(e_km)
+alpha = 0.5  # Glättungsfaktor, verhindert Nullwerte bei 0 Unfällen
+edges_gdf["length_km"] = edges_gdf["length"] / 1000.0
+# beta(e) wird aus der highway-Klasse abgeleitet (wie vorher mapping)
+edges_gdf["beta"] = edges_gdf["highway"].apply(highway_penalty_tag)
+edges_gdf["risk"] = edges_gdf.apply(lambda r: r["beta"] * (r["accidents"] + alpha) / max(r["length_km"], 1e-6), axis=1)
 
-def beta_factor(h):
-    if h is None:
-        return 1.0
-    if isinstance(h, (list, tuple)) and h:
-        h = h[0]
-    h = str(h).lower()
-    return BETA_MAPPING.get(h, 1.0)
+# Berechne Fahrzeit T(e) in Sekunden pro Kante aus Länge und Geschwindigkeit (v in km/h)
+def _edge_speed_from_attr(attr, fallback_highway=None):
+    try:
+        return _edge_speed_kmh(attr, fallback_highway=fallback_highway)
+    except Exception:
+        return _default_speed_for_highway(fallback_highway)
 
-def compute_risk(row, alpha_val=ALPHA):
-    length_km = max(row['length'] / 1000.0, 1e-6)
-    A = int(row['accidents'])
-    base = (A + alpha_val) / length_km
-    b = beta_factor(row.get('highway'))
-    return base * b
-
-edges_gdf["risk"] = edges_gdf.apply(lambda r: compute_risk(r, ALPHA), axis=1)
+edges_gdf["time_sec"] = edges_gdf.apply(lambda r: (r["length_km"] / max(1e-6, _edge_speed_from_attr(r.get("attr", {}), fallback_highway=r.get("highway")))) * 3600.0, axis=1)
 
 # Straßenklassen-Strafe basierend auf OSM 'highway' Tag
 def highway_penalty_tag(h):
@@ -376,30 +333,15 @@ def highway_penalty_tag(h):
 edges_gdf['road_penalty'] = edges_gdf['highway'].apply(highway_penalty_tag)
 
 # Normalisieren
-max_len = edges_gdf["length"].max() or 1.0
-# Zeit (T) pro Kante schätzen: Länge / typische Geschwindigkeit (sek)
-def estimate_edge_time_seconds(length_m, highway_tag):
-    # use default highway speeds for approximation
-    try:
-        speed_kmh = _default_speed_for_highway(highway_tag)
-    except Exception:
-        speed_kmh = 40.0
-    speed_mps = max(0.1, speed_kmh * 1000.0 / 3600.0)
-    return length_m / speed_mps
+T_max = edges_gdf["time_sec"].max() or 1.0
+max_risk = edges_gdf["risk"].max() or 1.0
 
-edges_gdf['time_sec'] = edges_gdf.apply(lambda r: estimate_edge_time_seconds(r['length'], r.get('highway')), axis=1)
-
-# normalize length via max length and risk via max risk, time via max time
-max_risk = edges_gdf["risk"].max()
-if not max_risk or max_risk <= 0:
-    max_risk = 1.0
-max_time = edges_gdf['time_sec'].max() if 'time_sec' in edges_gdf.columns else 1.0
-if not max_time or max_time <= 0:
-    max_time = 1.0
-
-edges_gdf["len_norm"] = edges_gdf["length"] / max_len
+# Normierungen (0..1)
+edges_gdf["T_norm"] = edges_gdf["time_sec"] / T_max
 edges_gdf["risk_norm"] = edges_gdf["risk"] / max_risk
-edges_gdf['time_norm'] = edges_gdf['time_sec'] / max_time
+# len_norm bleibt optional (für Vergleich/debug)
+max_len = edges_gdf["length"].max() or 1.0
+edges_gdf["len_norm"] = edges_gdf["length"] / max_len
 
 # Gewichte – leichte ML-basierte Anpassung zur Bewertung von Straßen (bevorzuge Hauptstraßen)
 mix_param = 0.5
@@ -496,48 +438,11 @@ edges_gdf['ai_weight_fast'] = 1.0 + (1.0 - p_main) * ai_strengths['fast']
 edges_gdf['ai_weight_safe'] = 1.0 + (1.0 - p_main) * ai_strengths['safe']
 edges_gdf['ai_weight_mix'] = 1.0 + (1.0 - p_main) * ai_strengths['mix']
 
-# Build weights depending on selected mode
-if MODE == 'practical':
-    # Practical / original heuristic weights (illustrative & demo-friendly)
-    edges_gdf['weight_fast'] = edges_gdf['length'] * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_fast']
-    edges_gdf['weight_safe'] = edges_gdf['risk_norm'] * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_safe']
-    edges_gdf['weight_mix'] = (edges_gdf['len_norm'] * (1 - mix_param) + edges_gdf['risk_norm'] * mix_param) * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_mix']
-
-elif MODE in ('theoretical', 'compare'):
-    # Theoretical: W_lambda = (1-lambda) * T_norm + lambda * R_norm
-    for kind, lam in LAMBDA_VALUES.items():
-        edges_gdf[f'W_base_{kind}'] = (1.0 - lam) * edges_gdf['time_norm'] + lam * edges_gdf['risk_norm']
-
-    # optionally apply penalties
-    if APPLY_PENALTIES:
-        for kind in LAMBDA_VALUES.keys():
-            edges_gdf[f'W_base_{kind}'] = edges_gdf[f'W_base_{kind}'] * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf[f'ai_weight_{kind}']
-
-    edges_gdf['weight_fast'] = edges_gdf['W_base_fast']
-    edges_gdf['weight_safe'] = edges_gdf['W_base_safe']
-    edges_gdf['weight_mix'] = edges_gdf['W_base_mix']
-
-    # If compare mode requested, also compute practical weights for comparison and dump CSV
-    if MODE == 'compare':
-        edges_gdf['practical_weight_fast'] = edges_gdf['length'] * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_fast']
-        edges_gdf['practical_weight_safe'] = edges_gdf['risk_norm'] * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_safe']
-        edges_gdf['practical_weight_mix'] = (edges_gdf['len_norm'] * (1 - mix_param) + edges_gdf['risk_norm'] * mix_param) * edges_gdf['highway_weight'] * edges_gdf['road_penalty'] * edges_gdf['ai_weight_mix']
-        # write comparison CSV
-        cols = ['u','v','length','accidents','len_norm','time_sec','time_norm','risk','risk_norm',
-                'W_base_fast','W_base_safe','W_base_mix','practical_weight_fast','practical_weight_safe','practical_weight_mix']
-        try:
-            edges_gdf[cols].to_csv(OUT_CSV, index=False)
-            print(f"Wrote comparison CSV to {OUT_CSV}")
-        except Exception as e:
-            print("Failed to write comparison CSV:", e)
-
-else:
-    print(f"Unknown MODE '{MODE}' - defaulting to theoretical")
-    for kind, lam in LAMBDA_VALUES.items():
-        edges_gdf[f'W_base_{kind}'] = (1.0 - lam) * edges_gdf['time_norm'] + lam * edges_gdf['risk_norm']
-    edges_gdf['weight_fast'] = edges_gdf['W_base_fast']
-    edges_gdf['weight_safe'] = edges_gdf['W_base_safe']
-    edges_gdf['weight_mix'] = edges_gdf['W_base_mix']
+# Finalgewichte: benutze normierte Fahrzeit T_norm anstelle von Länge und das geglättete Risiko
+# Multipliziere zusätzlich mit highway_weight und ai_weight; road_penalty wurde bereits als beta in risk berücksichtigt
+edges_gdf["weight_fast"] = edges_gdf["T_norm"] * edges_gdf["highway_weight"] * edges_gdf["ai_weight_fast"]
+edges_gdf["weight_safe"] = edges_gdf["risk_norm"] * edges_gdf["highway_weight"] * edges_gdf["ai_weight_safe"]
+edges_gdf["weight_mix"] = ((1 - mix_param) * edges_gdf["T_norm"] + mix_param * edges_gdf["risk_norm"]) * edges_gdf["highway_weight"] * edges_gdf["ai_weight_mix"]
 
 # Baue gerichteten Graphen mit minimalen Gewichten pro (u,v)
 H = nx.DiGraph()
