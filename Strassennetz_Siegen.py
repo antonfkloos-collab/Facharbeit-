@@ -345,6 +345,9 @@ edges_gdf["len_norm"] = edges_gdf["length"] / max_len
 # Gewichte – leichte ML-basierte Anpassung zur Bewertung von Straßen (bevorzuge Hauptstraßen)
 mix_param = 0.5
 route_pref_strength = 1.0  # reset manual strength; AI model will handle preference
+USE_AI = False  # Set to True to enable Ridge/RandomForest based preference estimation
+
+
 
 # Zielwert (wie "bevorzugt" ist die Straße), basierend auf OSM 'highway' tag
 def hw_target(h):
@@ -379,7 +382,7 @@ y = edges_gdf['hw_target'].fillna(-1).values
 
 # Train Ridge with CV if enough samples
 mask = y >= 0
-if mask.sum() >= 20:
+if USE_AI and mask.sum() >= 20:
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X[mask])
     alphas = [0.1, 1.0, 10.0]
@@ -396,6 +399,9 @@ if mask.sum() >= 20:
     else:
         pref = (pred - pmin) / (pmax - pmin)
 else:
+    pref = 1.0 - edges_gdf['risk_norm'].fillna(0).values
+else:
+    # deterministic heuristic: prefer low-risk edges
     pref = 1.0 - edges_gdf['risk_norm'].fillna(0).values
 
 # Convert preference to highway_weight factor scaled by route_pref_strength
