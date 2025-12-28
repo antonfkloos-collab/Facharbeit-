@@ -319,7 +319,7 @@ def highway_penalty_tag(h):
 edges_gdf['road_penalty'] = edges_gdf['highway'].apply(highway_penalty_tag)
 
 # Normalisieren und berechne Fahrzeit (T) sowie Risiko (R)
-mix_param = 0.5
+mix_param = 1.0
 
 # Länge in km
 edges_gdf['length_km'] = edges_gdf['length'] / 1000.0
@@ -333,7 +333,7 @@ edges_gdf['T_sec'] = edges_gdf.apply(lambda r: (r['length_km'] / max(eps, r['spe
 
 # Risiko R(e) = beta(e) * (accidents + alpha) / length_km
 # alpha wird konstant auf 1 gesetzt (Glättung), beta nutzen wir aus 'road_penalty'
-alpha = 1.0
+alpha = 1
 edges_gdf['R'] = edges_gdf.apply(lambda r: (r['road_penalty'] * (r['accidents'] + alpha) / max(eps, r['length_km'])) if r['length_km'] > 0 else 0.0, axis=1)
 
 # Normiere auf 0..1
@@ -342,11 +342,26 @@ R_max = edges_gdf['R'].max() or 1.0
 edges_gdf['T_norm'] = edges_gdf['T_sec'] / T_max
 edges_gdf['R_norm'] = edges_gdf['R'] / R_max
 
-# Final: Verwende exakt W_lambda (keine multiplicativen AI/highway Faktoren)
-# Varianten: fast (lambda=0 -> nur T_norm), safe (lambda=1 -> nur R_norm), mix (lambda=mix_param)
-edges_gdf['weight_fast'] = edges_gdf['T_norm']
-edges_gdf['weight_safe'] = edges_gdf['R_norm']
-edges_gdf['weight_mix'] = (1.0 - mix_param) * edges_gdf['T_norm'] + mix_param * edges_gdf['R_norm']
+# --- User-configurable route weighting parameters ---
+# Für jede Route kannst du hier direkt einstellen:
+#  - t_weight: Anteil / Skalar für T (normiert)
+#  - r_weight: Anteil / Skalar für R (normiert)
+#  - t_scale, r_scale: zusätzliche Skalierung vor Kombination
+#  - use_road_penalty: ob road_penalty (zusätzlich zur bereits in R verwendeten beta) multipliziert werden soll
+#  - road_penalty_mul: zusätzlicher Multiplikator
+# Beispiel: setze r_weight hoch für 'safe', t_weight hoch für 'fast'
+route_params = {
+    'fast': {'t_weight': 1.0, 'r_weight': 0.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
+    'safe': {'t_weight': 0.0, 'r_weight': 1.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
+    'mix':  {'t_weight': 1.0 - mix_param, 'r_weight': mix_param, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0}
+}
+
+# Berechne finale Gewichte aus den konfigurierten Parametern
+for kind, p in route_params.items():
+    base = p['t_weight'] * p.get('t_scale', 1.0) * edges_gdf['T_norm'] + p['r_weight'] * p.get('r_scale', 1.0) * edges_gdf['R_norm']
+    if p.get('use_road_penalty', False):
+        base = base * edges_gdf['road_penalty'] * p.get('road_penalty_mul', 1.0)
+    edges_gdf[f'weight_{kind}'] = base
 
 # Baue gerichteten Graphen mit minimalen Gewichten pro (u,v)
 H = nx.DiGraph()
@@ -387,6 +402,30 @@ for kind, node_list in paths.items():
 if route_stats:
     summary = {label_map.get(k, k): f"{_fmt_time_seconds(v['seconds'])}, {_fmt_dist_m(v['meters'])}" for k, v in route_stats.items()}
     print("Zeit/Distanz (ca.):", summary)
+
+# --- Diagnose: prüfe, ob mix mit safe/fast übereinstimmt und berechne Gesamt-R für jede Route ---
+def route_total_R(node_list):
+    if not node_list:
+        return 0.0
+    total_R = 0.0
+    for u, v in zip(node_list[:-1], node_list[1:]):
+        subset = edges_gdf[(edges_gdf['u'] == u) & (edges_gdf['v'] == v)]
+        if subset.empty:
+            continue
+        # wähle minimalen R falls parallelkanten
+        total_R += subset['R'].min()
+    return total_R
+
+for kind, node_list in paths.items():
+    if not node_list:
+        continue
+    t = route_stats.get(kind, {}).get('seconds', None)
+    meters = route_stats.get(kind, {}).get('meters', None)
+    rsum = route_total_R(node_list)
+    print(f"Route {kind}: Knoten={len(node_list)}, Zeit(s)={t}, Distanz(m)={meters}, Sum_R={rsum:.3f}")
+
+print("mix == safe:", paths.get('mix') == paths.get('safe'))
+print("mix == fast:", paths.get('mix') == paths.get('fast'))
 
 # ---------------------------------------------------
 # 5. Karte zeichnen (keine Zwischenmarker, Routen entlang Straßengeometrie)
