@@ -345,9 +345,6 @@ edges_gdf["len_norm"] = edges_gdf["length"] / max_len
 # Gewichte – leichte ML-basierte Anpassung zur Bewertung von Straßen (bevorzuge Hauptstraßen)
 mix_param = 0.5
 route_pref_strength = 1.0  # reset manual strength; AI model will handle preference
-USE_AI = False  # Set to True to enable Ridge/RandomForest based preference estimation
-
-
 
 # Zielwert (wie "bevorzugt" ist die Straße), basierend auf OSM 'highway' tag
 def hw_target(h):
@@ -382,7 +379,7 @@ y = edges_gdf['hw_target'].fillna(-1).values
 
 # Train Ridge with CV if enough samples
 mask = y >= 0
-if USE_AI and mask.sum() >= 20:
+if mask.sum() >= 20:
     scaler = StandardScaler()
     Xs = scaler.fit_transform(X[mask])
     alphas = [0.1, 1.0, 10.0]
@@ -433,21 +430,25 @@ edges_gdf['highway_weight'] = 1.0 + (1.0 - pref) * (1.0 * route_pref_strength)
 # Use per-route AI strength so 'safe' can prioritize main roads more
 ai_strengths = {
     'fast': 1.0,
-    'safe': 8.0,
+    'safe': 4.0,
     'mix': 2.0
 }
 edges_gdf['ai_weight_fast'] = 1.0 + (1.0 - p_main) * ai_strengths['fast']
 edges_gdf['ai_weight_safe'] = 1.0 + (1.0 - p_main) * ai_strengths['safe']
 edges_gdf['ai_weight_mix'] = 1.0 + (1.0 - p_main) * ai_strengths['mix']
 
-# Finalgewichte: benutze normierte Fahrzeit T_norm anstelle von Länge und das geglättete Risiko
-# Multipliziere zusätzlich mit highway_weight und ai_weight; road_penalty wurde bereits als beta in risk berücksichtigt
-SAFE_RISK_MULTIPLIER = 2.0  # Verstärkt die Priorisierung des Risikos für die 'sichere' Route
+# Finalgewichte: Verwende exakt das in der Arbeit beschriebene Modell
+# W_lambda(e) = (1 - lambda) * T_norm(e) + lambda * R_norm(e)
+# lambda bestimmt die Gewichtung zwischen Fahrzeit und Risiko.
+lambda_vals = {
+    'fast': 0.0,      # nur Fahrzeit
+    'safe': 1.0,      # nur Risiko
+    'mix': mix_param  # Mischung wie oben
+}
 
-edges_gdf["weight_fast"] = edges_gdf["T_norm"] * edges_gdf["highway_weight"] * edges_gdf["ai_weight_fast"]
-# Für 'safe' das Risiko stärker gewichten (Multiplikator) — so werden Unfallarme Routen bevorzugt
-edges_gdf["weight_safe"] = (edges_gdf["risk_norm"] * SAFE_RISK_MULTIPLIER) * edges_gdf["highway_weight"] * edges_gdf["ai_weight_safe"]
-edges_gdf["weight_mix"] = ((1 - mix_param) * edges_gdf["T_norm"] + mix_param * edges_gdf["risk_norm"]) * edges_gdf["highway_weight"] * edges_gdf["ai_weight_mix"]
+edges_gdf["weight_fast"] = (1.0 - lambda_vals['fast']) * edges_gdf["T_norm"] + lambda_vals['fast'] * edges_gdf["risk_norm"]
+edges_gdf["weight_safe"] = (1.0 - lambda_vals['safe']) * edges_gdf["T_norm"] + lambda_vals['safe'] * edges_gdf["risk_norm"]
+edges_gdf["weight_mix"] = (1.0 - lambda_vals['mix']) * edges_gdf["T_norm"] + lambda_vals['mix'] * edges_gdf["risk_norm"]
 
 # Baue gerichteten Graphen mit minimalen Gewichten pro (u,v)
 H = nx.DiGraph()
