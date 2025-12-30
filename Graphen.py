@@ -292,8 +292,8 @@ class GraphTool:
                 w_val = random.randint(1, 10)
                 self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
                 self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-                # Unfälle generieren (3–15 Punkte auf der Kante)
-                acc_n = random.randint(3, 15)
+                # Unfälle generieren (1–3 Punkte auf der Kante)
+                acc_n = random.randint(1, 3)
                 x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
                 for _ in range(acc_n):
                     t = random.random()
@@ -319,7 +319,7 @@ class GraphTool:
             w_val = random.randint(1, 10)
             self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
             self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-            acc_n = random.randint(3, 15)
+            acc_n = random.randint(1, 3)
             x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
             for _ in range(acc_n):
                 t = random.random()
@@ -635,45 +635,36 @@ class GraphTool:
                     current = previous[current]
             return path, distances[self.goal_node]
 
-        # Compute W_lambda cost model per-edge so demo matches main script
-        # Model parameters
-        alpha = 1.0
+        # Modell mit Normierung: W_λ(e) = (1-λ)·T_norm(e) + λ·R_norm(e)
+        alpha = 0.1
         road_penalty = 1.0
-        # Use exact extremes for demo: fast -> only T, safe -> only R
-        route_lambdas = {"fast": 0.0, "mix": 0.5, "safe": 1.0}
 
-        # Prepare normalization baselines
-        # Use the raw weight as float (allow 1.0 to be a valid short edge).
-        # Protect against zero or negative weights by replacing them with a small epsilon.
-        EPS = 1e-6
+        # Lambda von 0 bis 1 (mix kannst du nach Bedarf anpassen)
+        route_lambdas = {"fast": 0.0, "mix": 0.12, "safe": 1.0}
+
         def edge_length(d):
             try:
                 L = float(d.get('weight', 1.0))
             except Exception:
                 L = 1.0
-            if L <= 0:
-                L = EPS
-            return L
+            return max(0.1, L)
 
+        # Vorab Maxima für Normierung bestimmen
         all_lengths = [edge_length(d) for d in self.edges.values()] or [1.0]
-        all_accs = [len(d['accidents']) for d in self.edges.values()] or [0]
         max_T = max(all_lengths) if all_lengths else 1.0
-
-        # Precompute raw R values for normalization
-        R_vals = []
+        all_R_raw = []
         for d in self.edges.values():
-            length = edge_length(d)
-            A = len(d['accidents'])
-            R_raw = (A + alpha) / length * road_penalty
-            R_vals.append(R_raw)
-        max_R = max(R_vals) if R_vals and max(R_vals) > 0 else 1.0
+            A = len(d.get('accidents', []))
+            all_R_raw.append((A + alpha) * road_penalty)
+        max_R = max(all_R_raw) if all_R_raw and max(all_R_raw) > 0 else 1.0
 
         def make_cost(route_key):
             lam = route_lambdas.get(route_key, 0.5)
             def cost(d):
                 T = edge_length(d)
+                A = len(d['accidents'])
+                R = (A + alpha) * road_penalty
                 T_norm = T / max_T if max_T > 0 else 0.0
-                R = (len(d['accidents']) + alpha) / edge_length(d) * road_penalty
                 R_norm = R / max_R if max_R > 0 else 0.0
                 return (1.0 - lam) * T_norm + lam * R_norm
             return cost
@@ -686,7 +677,7 @@ class GraphTool:
         self.path_safe = path_safe
         self.path_mix = path_mix
 
-        # Helper to compute summary metrics along a path
+        # Helper to compute summary metrics along a path (mit Normierung)
         def summarize_path(path, route_key):
             if not path or len(path) < 2:
                 return {"sum_T": 0.0, "sum_R": 0.0, "sum_W": 0.0, "sum_A": 0}
@@ -702,8 +693,8 @@ class GraphTool:
                     continue
                 L = edge_length(d)
                 A = len(d.get('accidents', []))
+                R_raw = (A + alpha) * road_penalty
                 T_norm = L / max_T if max_T > 0 else 0.0
-                R_raw = (A + alpha) / L * road_penalty
                 R_norm = R_raw / max_R if max_R > 0 else 0.0
                 W = (1.0 - lam) * T_norm + lam * R_norm
                 sum_T += L

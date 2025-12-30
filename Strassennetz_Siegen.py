@@ -27,7 +27,7 @@ def haversine_meters(lat1, lon1, lat2, lon2):
     return 6371000 * c
 
 
-def load_graph(place_name="Siegen, Germany"):
+def load_graph(place_name="Siegen-Wittgenstein, Germany"):
     try:
         G = ox.graph_from_place(place_name, network_type="drive")
         return G
@@ -35,13 +35,13 @@ def load_graph(place_name="Siegen, Germany"):
         raise RuntimeError(f"Graph konnte nicht geladen werden: {e}")
 
 
-G = load_graph("Siegen, Germany")
+G = load_graph("Siegen-Wittgenstein, Germany")
 
 # Start- und Zielpunkte (lat, lon)
 try:
-    start_coords = ox.geocode("Gesamtschule Eiserfeld, Siegen, Germany")
+    start_coords = ox.geocode("Wilnsdorf, Germany")
 except Exception:
-    start_coords = (50.8542, 8.0248)
+    start_coords = (50.7800, 8.0100)
 
 try:
     ziel_coords = ox.geocode("Siegen ZOB, Siegen, Germany")
@@ -288,9 +288,9 @@ df_acc["XGCSWGS84"] = pd.to_numeric(df_acc.get("XGCSWGS84", df_acc.get('LINREFX'
 df_acc["YGCSWGS84"] = pd.to_numeric(df_acc.get("YGCSWGS84", df_acc.get('LINREFY')), errors="coerce")
 df_acc = df_acc.dropna(subset=["XGCSWGS84", "YGCSWGS84"])
 
-# Filter: nur Unfälle im Bereich Siegen/Eiserfeld (Bounding Box)
-min_lon, max_lon = 7.98, 8.08
-min_lat, max_lat = 50.82, 50.90
+# Filter: nur Unfälle im Bereich Herdorf/Bad Berleburg (vergrößerte Bounding Box)
+min_lon, max_lon = 7.90, 8.35
+min_lat, max_lat = 50.70, 51.00
 df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_lon) &
                 (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
 
@@ -366,7 +366,7 @@ def highway_penalty_tag(h):
 edges_gdf['road_penalty'] = edges_gdf['highway'].apply(highway_penalty_tag)
 
 # Normalisieren und berechne Fahrzeit (T) sowie Risiko (R)
-mix_param = 0.3
+mix_param = 0.115
 
 # Länge in km
 edges_gdf['length_km'] = edges_gdf['length'] / 1000.0
@@ -378,40 +378,27 @@ edges_gdf['speed_kmh'] = edges_gdf['highway'].apply(lambda h: _default_speed_for
 eps = 1e-6
 edges_gdf['T_sec'] = edges_gdf.apply(lambda r: (r['length_km'] / max(eps, r['speed_kmh'])) * 3600.0, axis=1)
 
-# Risiko R(e) = beta(e) * (A_weighted + alpha) / length_km
-# alpha wird konstant auf 1 gesetzt (Glättung), beta nutzen wir aus 'road_penalty'
-alpha = 1
-edges_gdf['R'] = edges_gdf.apply(lambda r: (r['road_penalty'] * (r['A_weighted'] + alpha) / max(eps, r['length_km'])) if r['length_km'] > 0 else 0.0, axis=1)
+# Risiko R(e) = beta(e) * (A_weighted + alpha)  (ohne Längennormierung)
+# alpha als Glättung, beta aus road_penalty
+alpha = 0.1
+edges_gdf['R'] = edges_gdf.apply(lambda r: r['road_penalty'] * (r['A_weighted'] + alpha), axis=1)
+# --- Lambda-Parameter (0..1) und Normierung ---
+# W_λ(e) = (1-λ)·T_norm(e) + λ·R_norm(e)
+route_lambdas = {
+    'fast': 0.0,      # λ = 0: nur Zeit
+    'safe': 1.0,      # λ = 1: nur Risiko
+    'mix': mix_param  # λ = 0.5 (oder was du setzt): Balance
+}
 
-# Normiere auf 0..1
+# Normiere T und R auf 0..1
 T_max = edges_gdf['T_sec'].max() or 1.0
 R_max = edges_gdf['R'].max() or 1.0
 edges_gdf['T_norm'] = edges_gdf['T_sec'] / T_max
 edges_gdf['R_norm'] = edges_gdf['R'] / R_max
 
-# --- User-configurable route weighting parameters ---
-# Für jede Route kannst du hier direkt einstellen:
-#  - t_weight: Anteil / Skalar für T (normiert)
-#  - r_weight: Anteil / Skalar für R (normiert)
-#  - t_scale, r_scale: zusätzliche Skalierung vor Kombination
-#  - use_road_penalty: ob road_penalty (zusätzlich zur bereits in R verwendeten beta) multipliziert werden soll
-#  - road_penalty_mul: zusätzlicher Multiplikator
-# Beispiel: setze r_weight hoch für 'safe', t_weight hoch für 'fast'
-route_params = {
-    'fast': {'t_weight': 1.0, 'r_weight': 0.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
-    # Safe route: Risiko wird ausschließlich über R(e) = beta * (A_count + alpha) / L berechnet.
-    # Keine zusätzliche Multiplikation der finalen Gewichte mehr.
-    'safe': {'t_weight': 0.0, 'r_weight': 1.0, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0},
-    'mix':  {'t_weight': 1.0 - mix_param, 'r_weight': mix_param, 't_scale': 1.0, 'r_scale': 1.0, 'use_road_penalty': False, 'road_penalty_mul': 1.0}
-}
-
-# Berechne finale Gewichte aus den konfigurierten Parametern
-for kind, p in route_params.items():
-    base = p['t_weight'] * p.get('t_scale', 1.0) * edges_gdf['T_norm'] + p['r_weight'] * p.get('r_scale', 1.0) * edges_gdf['R_norm']
-    # optional: apply road_penalty multiplier (keeps its effect inside the weight before normalization)
-    if p.get('use_road_penalty', False):
-        base = base * edges_gdf['road_penalty'] * p.get('road_penalty_mul', 1.0)
-    edges_gdf[f'weight_{kind}'] = base
+# Berechne finale Gewichte mit normierten Werten
+for kind, lam in route_lambdas.items():
+    edges_gdf[f'weight_{kind}'] = (1.0 - lam) * edges_gdf['T_norm'] + lam * edges_gdf['R_norm']
 
 # Baue gerichteten Graphen mit minimalen Gewichten pro (u,v)
 H = nx.DiGraph()
@@ -453,8 +440,9 @@ if route_stats:
     summary = {label_map.get(k, k): f"{_fmt_time_seconds(v['seconds'])}, {_fmt_dist_m(v['meters'])}" for k, v in route_stats.items()}
     print("Zeit/Distanz (ca.):", summary)
 
-# --- Diagnose: prüfe, ob mix mit safe/fast übereinstimmt und berechne Gesamt-R für jede Route ---
+# --- Diagnose: berechne Routen-Statistiken ---
 def route_total_R(node_list):
+    """Berechne Summe des rohen Risikowerts R für eine Route."""
     if not node_list:
         return 0.0
     total_R = 0.0
@@ -462,20 +450,27 @@ def route_total_R(node_list):
         subset = edges_gdf[(edges_gdf['u'] == u) & (edges_gdf['v'] == v)]
         if subset.empty:
             continue
-        # wähle minimalen R falls parallelkanten
         total_R += subset['R'].min()
     return total_R
+
+def route_total_T(node_list):
+    """Berechne Summe der Fahrzeit T für eine Route."""
+    if not node_list:
+        return 0.0
+    total_T = 0.0
+    for u, v in zip(node_list[:-1], node_list[1:]):
+        subset = edges_gdf[(edges_gdf['u'] == u) & (edges_gdf['v'] == v)]
+        if subset.empty:
+            continue
+        total_T += subset['T_sec'].min()
+    return total_T
 
 for kind, node_list in paths.items():
     if not node_list:
         continue
-    t = route_stats.get(kind, {}).get('seconds', None)
-    meters = route_stats.get(kind, {}).get('meters', None)
-    rsum = route_total_R(node_list)
-    print(f"Route {kind}: Knoten={len(node_list)}, Zeit(s)={t}, Distanz(m)={meters}, Sum_R={rsum:.3f}")
-
-print("mix == safe:", paths.get('mix') == paths.get('safe'))
-print("mix == fast:", paths.get('mix') == paths.get('fast'))
+    t = route_total_T(node_list)
+    r = route_total_R(node_list)
+    print(f"Route {kind}: Knoten={len(node_list)}, Sum_T(sec)={t:.1f}, Sum_R={r:.3f}")
 
 # ---------------------------------------------------
 # 5. Karte zeichnen (keine Zwischenmarker, Routen entlang Straßengeometrie)
@@ -483,19 +478,12 @@ print("mix == fast:", paths.get('mix') == paths.get('fast'))
 # ---------------------------------------------------
 color_map = {"fast": "#1f78b4", "safe": "#33a02c", "mix": "#e31a1c"}
 m = folium.Map(location=start_coords, zoom_start=14)
-folium.Marker(start_coords, tooltip="Start: Gesamtschule Eiserfeld", icon=folium.Icon(color="green")).add_to(m)
+folium.Marker(start_coords, tooltip="Start: Wilnsdorf", icon=folium.Icon(color="green")).add_to(m)
 folium.Marker(ziel_coords, tooltip="Ziel: Siegen", icon=folium.Icon(color="red")).add_to(m)
 
 # Unfall-Heatmap (sample falls sehr viele Punkte)
+# Wird später mit den gleichen Kriterien wie die Punkte gefiltert
 gdf_acc_plot = gdf_acc.to_crs(4326)
-n_points = len(gdf_acc_plot)
-max_points = 5000
-if n_points > max_points:
-    sample = gdf_acc_plot.sample(max_points)
-else:
-    sample = gdf_acc_plot
-heat_data = [[pt.y, pt.x] for pt in sample.geometry]
-HeatMap(heat_data, radius=7, blur=12, name='Unfall-Heatmap').add_to(m)
 
 def route_coords_from_nodes(node_list):
     coords = []
@@ -522,6 +510,29 @@ def route_coords_from_nodes(node_list):
             coords.extend(seg_coords[1:])
     return coords
 
+# Berechne Buffer für Heatmap-Filterung
+from shapely.geometry import LineString
+from shapely.ops import unary_union
+route_lines = []
+for kind, node_list in paths.items():
+    if not node_list:
+        continue
+    coords = route_coords_from_nodes(node_list)
+    route_lines.append(LineString([(lon, lat) for lat, lon in coords]))
+route_union = unary_union(route_lines)
+outer_buffer = route_union.buffer(0.0009)
+
+# Filtere Heatmap-Punkte mit Buffer
+gdf_heat = gdf_acc_plot[gdf_acc_plot.geometry.within(outer_buffer)].copy()
+n_points = len(gdf_heat)
+max_points = 5000
+if n_points > max_points:
+    sample = gdf_heat.sample(max_points)
+else:
+    sample = gdf_heat
+heat_data = [[pt.y, pt.x] for pt in sample.geometry]
+HeatMap(heat_data, radius=7, blur=12, name='Unfall-Heatmap').add_to(m)
+
 for kind, node_list in paths.items():
     if not node_list:
         continue
@@ -535,18 +546,7 @@ for kind, node_list in paths.items():
 folium.LayerControl().add_to(m)
 
 # Unfälle als Punkte auf der Karte markieren – alle Punkte innerhalb eines äußeren Puffers
-from shapely.geometry import LineString
-from shapely.ops import unary_union
-route_lines = []
-for kind, node_list in paths.items():
-    if not node_list:
-        continue
-    coords = route_coords_from_nodes(node_list)
-    route_lines.append(LineString([(lon, lat) for lat, lon in coords]))
-route_union = unary_union(route_lines)
-# inner buffer ~30m, outer buffer ~100m (in degrees approx)
-inner_buffer = route_union.buffer(0.0003)
-outer_buffer = route_union.buffer(0.0009)
+# (outer_buffer wurde oben bereits berechnet)
 gdf_acc_plot = gdf_acc.to_crs(4326)
 
 def val_to_yesno(v):
@@ -661,7 +661,7 @@ legend = Html(legend_html, script=True)
 m.get_root().html.add_child(legend)
 
 # Karte speichern und öffnen
-out_path = os.path.abspath("route_eiserfeld_siegen.html")
+out_path = os.path.abspath("route_wilnsdorf_siegen.html")
 m.save(out_path)
 print(f"Karte gespeichert als {out_path}")
 try:
