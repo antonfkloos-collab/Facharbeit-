@@ -292,8 +292,8 @@ class GraphTool:
                 w_val = random.randint(1, 10)
                 self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
                 self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-                # Unfälle generieren (1–3 Punkte auf der Kante)
-                acc_n = random.randint(1, 3)
+                # Unfälle generieren (1–8 Punkte auf der Kante)
+                acc_n = random.randint(1, 8)
                 x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
                 for _ in range(acc_n):
                     t = random.random()
