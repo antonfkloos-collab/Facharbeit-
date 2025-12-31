@@ -214,10 +214,10 @@ class GraphTool:
             self.edges[(node2, node1)] = {'weight': w, 'accidents': []}  # Bidirektional
             self.draw_graph()
 
-    def generate_random_graph(self, n_nodes: int = 10, extra_edges: int = 4):
+    def generate_random_graph(self, n_nodes: int = 20, extra_edges: int = 12):
         """Erzeugt ein größeres verbundenes Zufalls-Straßennetz.
         - n_nodes: Anzahl Knoten
-        - Jeder Kante bekommt Gewicht 1–10 und 1–8 Unfälle (als Punkte auf der Kante)
+        - Jeder Kante bekommt Gewicht 1–10 und 3–15 Unfälle (als Punkte auf der Kante)
         """
         # Canvas-Größe ermitteln
         self.root.update_idletasks()
@@ -292,8 +292,8 @@ class GraphTool:
                 w_val = random.randint(1, 10)
                 self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
                 self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-                # Unfälle generieren (1–8 Punkte auf der Kante)
-                acc_n = random.randint(1, 8)
+                # Unfälle generieren (1–3 Punkte auf der Kante)
+                acc_n = random.randint(1, 3)
                 x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
                 for _ in range(acc_n):
                     t = random.random()
@@ -696,12 +696,7 @@ class GraphTool:
         choice = self.route_choice.get()
         if choice == "fast":
             if path_fast:
-                summ = summarize_path(path_fast, 'fast')
-                msg = (
-                    f"Schnellste Route:\n{' → '.join(map(str, path_fast))}\n"
-                    f"Kosten: {dist_fast:.2f}\n"
-                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
-                )
+                msg = f"Schnellste Route:\n{' → '.join(map(str, path_fast))}"
                 messagebox.showinfo("Route – Schnell", msg)
                 self.path = self.path_fast
             else:
@@ -709,12 +704,7 @@ class GraphTool:
                 self.path = []
         elif choice == "safe":
             if path_safe:
-                summ = summarize_path(path_safe, 'safe')
-                msg = (
-                    f"Sicherste Route:\n{' → '.join(map(str, path_safe))}\n"
-                    f"Unfälle (Summe pro Kante): {dist_safe:.0f}\n"
-                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
-                )
+                msg = f"Sicherste Route:\n{' → '.join(map(str, path_safe))}"
                 messagebox.showinfo("Route – Sicher", msg)
                 self.path = self.path_safe
             else:
@@ -722,12 +712,7 @@ class GraphTool:
                 self.path = []
         else:
             if path_mix:
-                summ = summarize_path(path_mix, 'mix')
-                msg = (
-                    f"Gemischte Route:\n{' → '.join(map(str, path_mix))}\n"
-                    f"Kosten: {dist_mix:.2f}\n"
-                    f"Sum_T (raw lengths): {summ['sum_T']:.2f}, Sum_R (raw): {summ['sum_R']:.2f}, Sum_W: {summ['sum_W']:.3f}, Unfälle ges.: {summ['sum_A']}"
-                )
+                msg = f"Gemischte Route:\n{' → '.join(map(str, path_mix))}"
                 messagebox.showinfo("Route – Misch", msg)
                 self.path = self.path_mix
             else:

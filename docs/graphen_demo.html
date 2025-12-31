@@ -517,7 +517,7 @@ function calculatePath() {
     const titles = {fast: 'Schnellste Route', safe: 'Sicherste Route', mix: 'Gemischte Route'};
     document.getElementById('result-title').textContent = titles[routeType];
     document.getElementById('result-path').textContent = path.length > 0 ? path.join(' → ') : 'Kein Pfad gefunden!';
-    document.getElementById('result-info').textContent = path.length > 0 ? `Kosten: ${dist[goalNode].toFixed(2)}` : '';
+    document.getElementById('result-info').textContent = '';
     document.getElementById('result-modal').classList.add('show');
     draw();
 }
