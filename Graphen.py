@@ -319,7 +319,7 @@ class GraphTool:
             w_val = random.randint(1, 10)
             self.edges[(u, v)] = {'weight': w_val, 'accidents': []}
             self.edges[(v, u)] = {'weight': w_val, 'accidents': []}
-            acc_n = random.randint(1, 3)
+            acc_n = random.randint(1, 8)
             x1, y1 = self.nodes[u]; x2, y2 = self.nodes[v]
             for _ in range(acc_n):
                 t = random.random()
@@ -641,7 +641,7 @@ class GraphTool:
         road_penalty = 1.0
         
         # Lambda von 0 bis 1
-        route_lambdas = {"fast": 0.0, "mix": 0.3, "safe": 1.0}
+        route_lambdas = {"fast": 0.0, "mix": 0.45, "safe": 1.0}
         
         def edge_length(d):
             try:
