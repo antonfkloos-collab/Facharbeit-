@@ -402,7 +402,7 @@ function addEdge(u, v, weight) {
 
 function generateRandom() {
     clearAll();
-    const w = canvas.width, h = canvas.height, margin = 50, n = 10;
+    const w = canvas.width, h = canvas.height, margin = 50, n = 20;
     const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
     const cellW = (w - 2*margin) / cols, cellH = (h - 2*margin) / rows;
     
@@ -448,7 +448,7 @@ function generateRandom() {
     
     let extra = 0;
     for (const {u, v} of allEdges) {
-        if (extra >= 4) break;
+        if (extra >= 12) break;
         const key = Math.min(u,v) + '-' + Math.max(u,v);
         if (added.has(key) || added.has(v + '-' + u)) continue;
         const w = Math.floor(Math.random() * 10) + 1;
@@ -475,16 +475,15 @@ function calculatePath() {
     if (startNode === null || goalNode === null) { alert('Bitte Start- und Zielpunkt setzen!'); return; }
     
     const routeType = document.querySelector('input[name="route"]:checked').value;
-    // Kostenmodell analog Python: W = (1-λ) * Gewicht + λ * (Unfälle + α)
-    const alpha = 0.1;
-    const routeLambda = { fast: 0.0, mix: 0.45, safe: 1.0 };
-
+    const allW = Object.values(edges).map(e => e.weight);
+    const allA = Object.values(edges).map(e => e.accidents.length);
+    const wMax = Math.max(...allW, 1), aMax = Math.max(...allA, 1);
+    
     function costFunc(edge) {
-        const w = edge.weight;
-        const a = edge.accidents.length;
-        const lam = routeLambda[routeType] ?? 0.45;
-        if (routeType === 'safe') return a + alpha; // direkt Unfälle bevorzugen
-        return (1 - lam) * w + lam * (a + alpha);
+        const wNorm = edge.weight / wMax, aNorm = edge.accidents.length / aMax;
+        if (routeType === 'fast') return 0.9 * wNorm + 0.1 * aNorm;
+        if (routeType === 'safe') return edge.accidents.length;
+        return 0.55 * wNorm + 0.45 * aNorm;
     }
     
     const dist = {}, prev = {};
