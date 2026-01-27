@@ -103,11 +103,13 @@
         .lambda-control label { font-size: 12px; font-weight: 600; color: #94a3b8; }
         .lambda-control input[type="range"] { 
             width: 100px; 
-            accent-color: #f59e0b;
+            accent-color: #06b6d4;
         }
-        .lambda-control span { font-size: 12px; color: #f59e0b; font-weight: 600; min-width: 80px; }
+        .lambda-control span { font-size: 12px; color: #06b6d4; font-weight: 600; min-width: 80px; }
         .status {
-            margin-left: auto;
+            position: fixed;
+            bottom: 16px;
+            left: 16px;
             font-size: 13px;
             font-weight: 600;
             color: #06b6d4;
@@ -115,6 +117,7 @@
             padding: 8px 16px;
             border-radius: 8px;
             border: 1px solid rgba(6, 182, 212, 0.3);
+            z-index: 100;
         }
         .canvas-container {
             flex: 1;
@@ -200,6 +203,9 @@
             border-color: #06b6d4;
             background: #334155;
         }
+        .toolbar-spacer {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -232,9 +238,11 @@
             <label><input type="radio" name="route" value="angepasst"><span>Angepasst <span id="angepasst-lambda">λ = 0.50</span></span></label>
         </div>
         
+        <div class="toolbar-spacer"></div>
         <button class="btn primary" id="btn-calc">Route berechnen</button>
-        <div class="status" id="status">Modus: Knoten hinzufügen</div>
     </div>
+    
+    <div class="status" id="status">Modus: Knoten hinzufügen</div>
     
     <div class="canvas-container">
         <canvas id="canvas" width="1000" height="600"></canvas>
