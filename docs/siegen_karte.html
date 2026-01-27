@@ -29,14 +29,38 @@
             background: #1e293b;
             color: #06b6d4;
         }
-        main { flex: 1; }
+        main { flex: 1; position: relative; }
         iframe { width: 100%; height: 100%; border: 0; }
+        #back-button-overlay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10001;
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            color: #e2e8f0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        #back-button-overlay:hover {
+            background: #334155;
+            color: #f1f5f9;
+            border-color: #475569;
+        }
         footer { padding: 8px 14px; background: #0f172a; color: rgba(255,255,255,0.6); font-size: 0.9rem; }
         a { color: #38bdf8; text-decoration: none; }
         a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
+    <a href="index.html" id="back-button-overlay">Zurück</a>
     <header>
         <a href="index.html">Zurück</a>
         Straßennetz Siegen – Karte (Wilnsdorf → Siegen)
