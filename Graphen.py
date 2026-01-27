@@ -120,8 +120,16 @@ class GraphTool:
         self.lambda_scale.set(int(self.custom_lambda * 100))
         self.lambda_scale.pack(side=tk.LEFT, padx=(0, 5))
 
-        # Auswahl der Routenart – jede Option in eigenem Kasten
+        # Angepasst – direkt nach Lambda-Regler
         rb_kwargs = {"bg": "#243352", "fg": "#e2e8f0", "activebackground": "#243352", "selectcolor": "#0891b2", "font": ("Segoe UI", 10, "bold")}
+        angepasst_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
+        angepasst_box.pack(side=tk.LEFT, padx=6)
+        angepasst_rb = tk.Radiobutton(angepasst_box, text="Angepasst", variable=self.route_choice, value="angepasst", **rb_kwargs)
+        angepasst_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
+        self.angepasst_label = tk.Label(angepasst_box, text=f"λ = {self.custom_lambda:.2f}", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
+        self.angepasst_label.pack(side=tk.TOP)
+
+        # Auswahl der Routenart – jede Option in eigenem Kasten
         fast_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         fast_box.pack(side=tk.LEFT, padx=6)
         fast_rb = tk.Radiobutton(fast_box, text="Schnellroute", variable=self.route_choice, value="fast", **rb_kwargs)
@@ -142,13 +150,6 @@ class GraphTool:
         mix_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         mix_label = tk.Label(mix_box, text="λ = 0.45", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         mix_label.pack(side=tk.TOP)
-
-        angepasst_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        angepasst_box.pack(side=tk.LEFT, padx=6)
-        angepasst_rb = tk.Radiobutton(angepasst_box, text="Angepasst", variable=self.route_choice, value="angepasst", **rb_kwargs)
-        angepasst_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
-        self.angepasst_label = tk.Label(angepasst_box, text=f"λ = {self.custom_lambda:.2f}", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
-        self.angepasst_label.pack(side=tk.TOP)
 
         # Route berechnen (am Ende)
         self.btn_calculate = tk.Button(toolbar, text="Route berechnen", 
