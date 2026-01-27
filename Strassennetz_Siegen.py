@@ -687,7 +687,7 @@ back_button_html = """
 </style>
 <button id="back-button" onclick="window.location.href='index.html'">Zurück</button>
 """
-back_btn = Html(back_button_html, script=False)
+back_btn = Html(back_button_html, script=True)
 m.get_root().html.add_child(back_btn)
 
 # Karte speichern und öffnen
