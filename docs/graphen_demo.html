@@ -220,13 +220,13 @@
         </div>
         
         <div class="radio-group">
-            <label><input type="radio" name="route" value="fast" checked><span>Schnell (λ = 0.00)</span></label>
-            <label><input type="radio" name="route" value="safe"><span>Sicher (λ = 1.00)</span></label>
-            <label><input type="radio" name="route" value="mix"><span>Misch (λ = 0.45)</span></label>
+            <label><input type="radio" name="route" value="fast" checked><span>Schnellroute (λ = 0.00)</span></label>
+            <label><input type="radio" name="route" value="safe"><span>Sicherheitsroute (λ = 1.00)</span></label>
+            <label><input type="radio" name="route" value="mix"><span>Kompromissroute (λ = 0.45)</span></label>
             <label><input type="radio" name="route" value="angepasst"><span>Angepasst <span id="angepasst-lambda">λ = 0.50</span></span></label>
         </div>
         
-        <div class="toolbar-spacer"></div>
+        <div class="toolbar-spacer" style="min-width: 12px;"></div>
         <button class="btn primary" id="btn-calc">Route berechnen</button>
     </div>
     
@@ -539,7 +539,7 @@ function calculatePath() {
         while (cur !== null) { path.unshift(cur); cur = prev[cur]; }
     }
     
-    const titles = {fast: 'Schnellste Route', safe: 'Sicherste Route', mix: 'Gemischte Route', angepasst: `Angepasste Route (λ = ${customLambda.toFixed(2)})`};
+    const titles = {fast: 'Schnellroute', safe: 'Sicherheitsroute', mix: 'Kompromissroute', angepasst: `Angepasste Route (λ = ${customLambda.toFixed(2)})`};
     document.getElementById('result-title').textContent = titles[routeType];
     document.getElementById('result-path').textContent = path.length > 0 ? path.join(' → ') : 'Kein Pfad gefunden!';
     document.getElementById('result-info').textContent = '';

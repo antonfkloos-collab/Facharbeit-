@@ -124,21 +124,21 @@ class GraphTool:
         rb_kwargs = {"bg": "#243352", "fg": "#e2e8f0", "activebackground": "#243352", "selectcolor": "#0891b2", "font": ("Segoe UI", 10, "bold")}
         fast_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         fast_box.pack(side=tk.LEFT, padx=6)
-        fast_rb = tk.Radiobutton(fast_box, text="Schnell", variable=self.route_choice, value="fast", **rb_kwargs)
+        fast_rb = tk.Radiobutton(fast_box, text="Schnellroute", variable=self.route_choice, value="fast", **rb_kwargs)
         fast_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         fast_label = tk.Label(fast_box, text="λ = 0.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         fast_label.pack(side=tk.TOP)
 
         safe_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         safe_box.pack(side=tk.LEFT, padx=6)
-        safe_rb = tk.Radiobutton(safe_box, text="Sicher", variable=self.route_choice, value="safe", **rb_kwargs)
+        safe_rb = tk.Radiobutton(safe_box, text="Sicherheitsroute", variable=self.route_choice, value="safe", **rb_kwargs)
         safe_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         safe_label = tk.Label(safe_box, text="λ = 1.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         safe_label.pack(side=tk.TOP)
 
         mix_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         mix_box.pack(side=tk.LEFT, padx=6)
-        mix_rb = tk.Radiobutton(mix_box, text="Misch", variable=self.route_choice, value="mix", **rb_kwargs)
+        mix_rb = tk.Radiobutton(mix_box, text="Kompromissroute", variable=self.route_choice, value="mix", **rb_kwargs)
         mix_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         mix_label = tk.Label(mix_box, text="λ = 0.45", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         mix_label.pack(side=tk.TOP)
@@ -745,27 +745,27 @@ class GraphTool:
         choice = self.route_choice.get()
         if choice == "fast":
             if path_fast:
-                msg = f"Schnellste Route (λ = {route_lambdas['fast']:.2f}):\n{' → '.join(map(str, path_fast))}"
-                messagebox.showinfo("Route – Schnell", msg)
+                msg = f"Schnellroute (λ = {route_lambdas['fast']:.2f}):\n{' → '.join(map(str, path_fast))}"
+                messagebox.showinfo("Route – Schnellroute", msg)
                 self.path = self.path_fast
             else:
-                messagebox.showinfo("Route – Schnell", "Kein Pfad gefunden!")
+                messagebox.showinfo("Route – Schnellroute", "Kein Pfad gefunden!")
                 self.path = []
         elif choice == "safe":
             if path_safe:
-                msg = f"Sicherste Route (λ = {route_lambdas['safe']:.2f}):\n{' → '.join(map(str, path_safe))}"
-                messagebox.showinfo("Route – Sicher", msg)
+                msg = f"Sicherheitsroute (λ = {route_lambdas['safe']:.2f}):\n{' → '.join(map(str, path_safe))}"
+                messagebox.showinfo("Route – Sicherheitsroute", msg)
                 self.path = self.path_safe
             else:
-                messagebox.showinfo("Route – Sicher", "Kein Pfad gefunden!")
+                messagebox.showinfo("Route – Sicherheitsroute", "Kein Pfad gefunden!")
                 self.path = []
         else:  # mix
             if path_mix:
-                msg = f"Gemischte Route (λ = {route_lambdas['mix']:.2f}):\n{' → '.join(map(str, path_mix))}"
-                messagebox.showinfo("Route – Misch", msg)
+                msg = f"Kompromissroute (λ = {route_lambdas['mix']:.2f}):\n{' → '.join(map(str, path_mix))}"
+                messagebox.showinfo("Route – Kompromissroute", msg)
                 self.path = self.path_mix
             else:
-                messagebox.showinfo("Route – Misch", "Kein Pfad gefunden!")
+                messagebox.showinfo("Route – Kompromissroute", "Kein Pfad gefunden!")
                 self.path = []
         
         # Angepasst Lambda

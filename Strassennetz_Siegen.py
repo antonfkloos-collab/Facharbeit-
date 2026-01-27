@@ -428,7 +428,7 @@ except Exception:
 print("Routen gefunden:", {k: (len(v) if v else 0) for k, v in paths.items()})
 
 # Geschätzte Zeit und Distanz für jede Route berechnen
-label_map = {"fast": "Schnell", "safe": "Sicher", "mix": "Mischroute"}
+label_map = {"fast": "Schnellroute", "safe": "Sicherheitsroute", "mix": "Kompromissroute"}
 route_stats = {}
 for kind, node_list in paths.items():
     if not node_list:
