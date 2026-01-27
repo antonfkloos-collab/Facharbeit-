@@ -56,13 +56,13 @@
         }
         .radio-group {
             display: flex;
-            gap: 4px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 4px;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: nowrap;
         }
         .radio-group label {
+            display: flex;
+            align-items: center;
             padding: 8px 12px;
             border-radius: 6px;
             font-size: 13px;
@@ -70,14 +70,20 @@
             cursor: pointer;
             transition: all 0.15s;
             color: #94a3b8;
+            background: #1e293b;
+            border: 1px solid #334155;
+            white-space: nowrap;
         }
         .radio-group input { display: none; }
         .radio-group input:checked + span {
             background: #06b6d4;
             color: #0f172a;
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin: -8px -12px;
+            border-radius: 4px;
+        }
+        .radio-group label:has(input:checked) {
+            background: #06b6d4;
+            color: #0f172a;
+            border-color: #06b6d4;
         }
         .density-control {
             display: flex;
@@ -201,7 +207,7 @@
 <body>
     
     <div class="toolbar">
-        <a href="index.html" class="back-link">← Zurück</a>
+        <a href="index.html" class="back-link">Zurück</a>
         <button class="btn active" id="btn-node">Knoten</button>
         <button class="btn" id="btn-edge">Kante</button>
         <button class="btn" id="btn-accident">Unfall</button>
