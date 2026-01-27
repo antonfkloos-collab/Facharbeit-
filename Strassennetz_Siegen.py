@@ -660,6 +660,33 @@ legend_html = """
 legend = Html(legend_html, script=True)
 m.get_root().html.add_child(legend)
 
+# Zurück-Button als Custom HTML einfügen
+back_button_html = """
+<style>
+    #back-button {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10000;
+        background: #ffffff;
+        border: 1px solid #ccc;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 12px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        transition: background-color 0.2s;
+    }
+    #back-button:hover {
+        background: #f0f0f0;
+    }
+</style>
+<button id="back-button" onclick="window.location.href='index.html'">← Zurück</button>
+"""
+back_btn = Html(back_button_html, script=False)
+m.get_root().html.add_child(back_btn)
+
 # Karte speichern und öffnen
 out_path = os.path.abspath("route_wilnsdorf_siegen.html")
 m.save(out_path)
