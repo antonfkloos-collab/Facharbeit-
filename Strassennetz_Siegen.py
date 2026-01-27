@@ -295,7 +295,7 @@ df_acc = df_acc[(df_acc["XGCSWGS84"] >= min_lon) & (df_acc["XGCSWGS84"] <= max_l
                 (df_acc["YGCSWGS84"] >= min_lat) & (df_acc["YGCSWGS84"] <= max_lat)]
 
 # Keine Jahresgewichtung: alle Unfälle gleich behandeln (kein Zerfall nach Jahren)
-# Wir zählen pro Unfallpunkt einfach A_count; ältere/newer Jahre werden nicht unterschiedlich gewichtet.
+# Wir zählen pro Unfallpunkt einfach A_count; ältere/neuere Jahre werden nicht unterschiedlich gewichtet.
 
 gdf_acc = gpd.GeoDataFrame(df_acc, geometry=gpd.points_from_xy(df_acc["XGCSWGS84"], df_acc["YGCSWGS84"]), crs="EPSG:4326").to_crs(3857)
 
