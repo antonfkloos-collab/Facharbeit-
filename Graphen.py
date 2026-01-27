@@ -29,10 +29,16 @@ class GraphTool:
         self.start_node = None
         self.goal_node = None
         self.path = []
+        self.path_fast = []
+        self.path_safe = []
+        self.path_mix = []
+        self.path_custom = []
         # Auswahl der Routen-Variante: fast | safe | mix
         self.route_choice = tk.StringVar(value="fast")
         # Unfalldichte (0.0–1.0): steuert, wie viele Unfallpunkte angezeigt werden
         self.acc_density = 0.7
+        # Custom Lambda-Wert (0.0–1.0): Gewichtung zwischen Zeit und Sicherheit
+        self.custom_lambda = 0.5
         
         self.setup_ui()
         
@@ -102,19 +108,47 @@ class GraphTool:
         self.density_scale.set(int(self.acc_density * 100))
         self.density_scale.pack(side=tk.TOP)
 
+        # Lambda-Regler (Gewichtung: 0=schnell, 1=sicher)
+        lambda_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
+        lambda_box.pack(side=tk.LEFT, padx=10)
+        tk.Label(lambda_box, text="Lambda (0=schnell, 1=sicher)", bg="#243352", fg="#64ffda", font=("Segoe UI", 10, "bold")).pack(side=tk.TOP, anchor="w")
+        scale_value_box = tk.Frame(lambda_box, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
+        scale_value_box.pack(side=tk.TOP, fill=tk.X)
+        self.lambda_scale = tk.Scale(scale_value_box, from_=0, to=100, orient=tk.HORIZONTAL, length=100,
+                          bg="#243352", fg="#e2e8f0", highlightthickness=0, troughcolor="#3d5a80",
+                                      showvalue=False, command=self._on_lambda_change)
+        self.lambda_scale.set(int(self.custom_lambda * 100))
+        self.lambda_scale.pack(side=tk.LEFT, padx=(0, 5))
+
         # Auswahl der Routenart – jede Option in eigenem Kasten
         rb_kwargs = {"bg": "#243352", "fg": "#e2e8f0", "activebackground": "#243352", "selectcolor": "#0891b2", "font": ("Segoe UI", 10, "bold")}
         fast_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         fast_box.pack(side=tk.LEFT, padx=6)
-        tk.Radiobutton(fast_box, text="Schnell", variable=self.route_choice, value="fast", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
+        fast_rb = tk.Radiobutton(fast_box, text="Schnell", variable=self.route_choice, value="fast", **rb_kwargs)
+        fast_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
+        fast_label = tk.Label(fast_box, text="λ = 0.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
+        fast_label.pack(side=tk.TOP)
 
         safe_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         safe_box.pack(side=tk.LEFT, padx=6)
-        tk.Radiobutton(safe_box, text="Sicher", variable=self.route_choice, value="safe", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
+        safe_rb = tk.Radiobutton(safe_box, text="Sicher", variable=self.route_choice, value="safe", **rb_kwargs)
+        safe_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
+        safe_label = tk.Label(safe_box, text="λ = 1.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
+        safe_label.pack(side=tk.TOP)
 
         mix_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
         mix_box.pack(side=tk.LEFT, padx=6)
-        tk.Radiobutton(mix_box, text="Misch", variable=self.route_choice, value="mix", **rb_kwargs).pack(side=tk.LEFT, padx=8, pady=6)
+        mix_rb = tk.Radiobutton(mix_box, text="Misch", variable=self.route_choice, value="mix", **rb_kwargs)
+        mix_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
+        mix_label = tk.Label(mix_box, text="λ = 0.45", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
+        mix_label.pack(side=tk.TOP)
+
+        angepasst_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
+        angepasst_box.pack(side=tk.LEFT, padx=6)
+        angepasst_rb = tk.Radiobutton(angepasst_box, text="Angepasst", variable=self.route_choice, value="angepasst", **rb_kwargs)
+        angepasst_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
+        self.angepasst_label = tk.Label(angepasst_box, text=f"λ = {self.custom_lambda:.2f}", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
+        self.angepasst_label.pack(side=tk.TOP)
 
         # Route berechnen (am Ende)
         self.btn_calculate = tk.Button(toolbar, text="Route berechnen", 
@@ -146,6 +180,15 @@ class GraphTool:
             v = 0.5
         self.acc_density = max(0.0, min(1.0, v))
         self.draw_graph()
+
+    def _on_lambda_change(self, val):
+        try:
+            v = float(val) / 100.0
+        except Exception:
+            v = 0.5
+        self.custom_lambda = max(0.0, min(1.0, v))
+        # Aktualisiere das Angepasst-Label
+        self.angepasst_label.config(text=f"λ = {self.custom_lambda:.2f}")
 
     def _acc_indices(self, acc_list, edge_key):
         """Gibt Indizes der anzuzeigenden Unfallpunkte zurück.
@@ -233,6 +276,10 @@ class GraphTool:
         self.start_node = None
         self.goal_node = None
         self.path = []
+        self.path_fast = []
+        self.path_safe = []
+        self.path_mix = []
+        self.path_custom = []
 
         # Knoten gleichmäßig verteilen (Jitter-Grid statt Haufenbildung)
         cols = max(2, int(round(n_nodes ** 0.5)))
@@ -650,8 +697,7 @@ class GraphTool:
                 L = 1.0
             return max(0.1, L)
 
-        def make_cost(route_key):
-            lam = route_lambdas.get(route_key, 0.5)
+        def make_cost(lam):
             def cost(d):
                 T = edge_length(d)
                 A = len(d['accidents'])
@@ -660,9 +706,12 @@ class GraphTool:
                 return (1.0 - lam) * T + lam * R
             return cost
 
-        path_fast, dist_fast = dijkstra(make_cost('fast'))
-        path_safe, dist_safe = dijkstra(make_cost('safe'))
-        path_mix, dist_mix = dijkstra(make_cost('mix'))
+        # Berechne Routen mit vordefiniertem Lambda
+        path_fast, dist_fast = dijkstra(make_cost(route_lambdas["fast"]))
+        path_safe, dist_safe = dijkstra(make_cost(route_lambdas["safe"]))
+        path_mix, dist_mix = dijkstra(make_cost(route_lambdas["mix"]))
+        # Berechne auch Route mit custom Lambda
+        path_custom, dist_custom = dijkstra(make_cost(self.custom_lambda))
 
         self.path_fast = path_fast
         self.path_safe = path_safe
@@ -696,7 +745,7 @@ class GraphTool:
         choice = self.route_choice.get()
         if choice == "fast":
             if path_fast:
-                msg = f"Schnellste Route:\n{' → '.join(map(str, path_fast))}"
+                msg = f"Schnellste Route (λ = {route_lambdas['fast']:.2f}):\n{' → '.join(map(str, path_fast))}"
                 messagebox.showinfo("Route – Schnell", msg)
                 self.path = self.path_fast
             else:
@@ -704,20 +753,104 @@ class GraphTool:
                 self.path = []
         elif choice == "safe":
             if path_safe:
-                msg = f"Sicherste Route:\n{' → '.join(map(str, path_safe))}"
+                msg = f"Sicherste Route (λ = {route_lambdas['safe']:.2f}):\n{' → '.join(map(str, path_safe))}"
                 messagebox.showinfo("Route – Sicher", msg)
                 self.path = self.path_safe
             else:
                 messagebox.showinfo("Route – Sicher", "Kein Pfad gefunden!")
                 self.path = []
-        else:
+        else:  # mix
             if path_mix:
-                msg = f"Gemischte Route:\n{' → '.join(map(str, path_mix))}"
+                msg = f"Gemischte Route (λ = {route_lambdas['mix']:.2f}):\n{' → '.join(map(str, path_mix))}"
                 messagebox.showinfo("Route – Misch", msg)
                 self.path = self.path_mix
             else:
                 messagebox.showinfo("Route – Misch", "Kein Pfad gefunden!")
                 self.path = []
+        
+        # Angepasst Lambda
+        choice = self.route_choice.get()
+        if choice == "angepasst":
+            if path_custom:
+                msg = f"Angepasste Route (λ = {self.custom_lambda:.2f}):\n{' → '.join(map(str, path_custom))}"
+                messagebox.showinfo("Route – Angepasst", msg)
+                self.path = path_custom
+            else:
+                messagebox.showinfo("Route – Angepasst", "Kein Pfad gefunden!")
+                self.path = []
+        
+        self.draw_graph()
+    
+    def calculate_custom_path(self):
+        if self.start_node is None or self.goal_node is None:
+            messagebox.showwarning("Warnung", "Bitte Start- und Zielpunkt festlegen!")
+            return
+
+        def dijkstra(cost_func):
+            distances = {node: float('inf') for node in self.nodes}
+            distances[self.start_node] = 0
+            previous = {node: None for node in self.nodes}
+            pq = [(0, self.start_node)]
+            visited = set()
+            while pq:
+                current_dist, current_node = heapq.heappop(pq)
+                if current_node in visited:
+                    continue
+                visited.add(current_node)
+                if current_node == self.goal_node:
+                    break
+                for (n1, n2), data in self.edges.items():
+                    neighbor = None
+                    if n1 == current_node:
+                        neighbor = n2
+                    elif n2 == current_node:
+                        neighbor = n1
+                    if neighbor is not None and neighbor not in visited:
+                        cost = cost_func(data)
+                        new_dist = current_dist + cost
+                        if new_dist < distances[neighbor]:
+                            distances[neighbor] = new_dist
+                            previous[neighbor] = current_node
+                            heapq.heappush(pq, (new_dist, neighbor))
+            # Pfad rekonstruieren
+            path = []
+            if distances[self.goal_node] != float('inf'):
+                current = self.goal_node
+                while current is not None:
+                    path.insert(0, current)
+                    current = previous[current]
+            return path, distances[self.goal_node]
+
+        alpha = 0.1
+        road_penalty = 1.0
+
+        def edge_length(d):
+            try:
+                L = float(d.get('weight', 1.0))
+            except Exception:
+                L = 1.0
+            return max(0.1, L)
+
+        def make_cost(lam):
+            def cost(d):
+                T = edge_length(d)
+                A = len(d['accidents'])
+                R = (A + alpha) * road_penalty
+                return (1.0 - lam) * T + lam * R
+            return cost
+
+        # Berechne nur die Custom-Lambda-Route
+        path_custom, dist_custom = dijkstra(make_cost(self.custom_lambda))
+        
+        if path_custom:
+            msg_custom = f"Custom Route (λ = {self.custom_lambda:.2f}):\n{' → '.join(map(str, path_custom))}"
+            messagebox.showinfo("Route – Custom Lambda", msg_custom)
+            self.path_custom = path_custom
+            self.path = self.path_custom
+        else:
+            messagebox.showinfo("Route – Custom Lambda", "Kein Pfad gefunden!")
+            self.path = []
+        
         self.draw_graph()
     
     def clear_all(self):
@@ -729,6 +862,10 @@ class GraphTool:
         self.start_node = None
         self.goal_node = None
         self.path = []
+        self.path_fast = []
+        self.path_safe = []
+        self.path_mix = []
+        self.path_custom = []
         self.draw_graph()
 
     def get_edge_at(self, x, y, tolerance=10):
