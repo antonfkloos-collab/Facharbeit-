@@ -100,7 +100,7 @@ class GraphTool:
 
         # Unfalldichte-Regler
         density_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        density_box.pack(side=tk.RIGHT, padx=10)
+        density_box.pack(side=tk.LEFT, padx=10)
         tk.Label(density_box, text="Unfalldichte", bg="#243352", fg="#64ffda", font=("Segoe UI", 10, "bold")).pack(side=tk.TOP, anchor="w")
         self.density_scale = tk.Scale(density_box, from_=0, to=100, orient=tk.HORIZONTAL, length=160,
                           bg="#243352", fg="#e2e8f0", highlightthickness=0, troughcolor="#3d5a80",
@@ -110,50 +110,58 @@ class GraphTool:
 
         # Lambda-Regler (Gewichtung: 0=schnell, 1=sicher)
         lambda_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        lambda_box.pack(side=tk.RIGHT, padx=10)
+        lambda_box.pack(side=tk.LEFT, padx=10)
         tk.Label(lambda_box, text="Lambda (0=schnell, 1=sicher)", bg="#243352", fg="#64ffda", font=("Segoe UI", 10, "bold")).pack(side=tk.TOP, anchor="w")
-        self.lambda_scale = tk.Scale(lambda_box, from_=0, to=100, orient=tk.HORIZONTAL, length=100,
+        scale_value_box = tk.Frame(lambda_box, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
+        scale_value_box.pack(side=tk.TOP, fill=tk.X)
+        self.lambda_scale = tk.Scale(scale_value_box, from_=0, to=100, orient=tk.HORIZONTAL, length=100,
                           bg="#243352", fg="#e2e8f0", highlightthickness=0, troughcolor="#3d5a80",
                                       showvalue=False, command=self._on_lambda_change)
         self.lambda_scale.set(int(self.custom_lambda * 100))
-        self.lambda_scale.pack(side=tk.TOP, fill=tk.X)
+        self.lambda_scale.pack(side=tk.LEFT, padx=(0, 5))
 
         # Auswahl der Routenart – jede Option in eigenem Kasten
         rb_kwargs = {"bg": "#243352", "fg": "#e2e8f0", "activebackground": "#243352", "selectcolor": "#0891b2", "font": ("Segoe UI", 10, "bold")}
         fast_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        fast_box.pack(side=tk.RIGHT, padx=6)
+        fast_box.pack(side=tk.LEFT, padx=6)
         fast_rb = tk.Radiobutton(fast_box, text="Schnell", variable=self.route_choice, value="fast", **rb_kwargs)
         fast_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         fast_label = tk.Label(fast_box, text="λ = 0.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         fast_label.pack(side=tk.TOP)
 
         safe_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        safe_box.pack(side=tk.RIGHT, padx=6)
+        safe_box.pack(side=tk.LEFT, padx=6)
         safe_rb = tk.Radiobutton(safe_box, text="Sicher", variable=self.route_choice, value="safe", **rb_kwargs)
         safe_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         safe_label = tk.Label(safe_box, text="λ = 1.00", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         safe_label.pack(side=tk.TOP)
 
         mix_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        mix_box.pack(side=tk.RIGHT, padx=6)
+        mix_box.pack(side=tk.LEFT, padx=6)
         mix_rb = tk.Radiobutton(mix_box, text="Misch", variable=self.route_choice, value="mix", **rb_kwargs)
         mix_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         mix_label = tk.Label(mix_box, text="λ = 0.45", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         mix_label.pack(side=tk.TOP)
 
         angepasst_box = tk.Frame(toolbar, bg="#243352", relief=tk.FLAT, bd=0, highlightthickness=0)
-        angepasst_box.pack(side=tk.RIGHT, padx=6)
+        angepasst_box.pack(side=tk.LEFT, padx=6)
         angepasst_rb = tk.Radiobutton(angepasst_box, text="Angepasst", variable=self.route_choice, value="angepasst", **rb_kwargs)
         angepasst_rb.pack(side=tk.TOP, padx=8, pady=(6, 0))
         self.angepasst_label = tk.Label(angepasst_box, text=f"λ = {self.custom_lambda:.2f}", bg="#243352", fg="#0891b2", font=("Segoe UI", 8))
         self.angepasst_label.pack(side=tk.TOP)
 
-        # Route berechnen
+        # Route berechnen (am Ende)
         self.btn_calculate = tk.Button(toolbar, text="Route berechnen", 
                         command=self.calculate_path,
                         **button_style)
         self.btn_calculate.config(bg="#0891b2", fg="#ffffff", activebackground="#22d3ee", activeforeground="#0a192f")
-        self.btn_calculate.pack(side=tk.RIGHT, padx=5)
+        self.btn_calculate.pack(side=tk.LEFT, padx=5)
+
+        # Status-Label
+        self.status_label = tk.Label(toolbar, text="Modus: Knoten hinzufügen", 
+                         font=("Segoe UI", 11, "bold"),
+                         bg="#243352", fg="#64ffda", padx=20)
+        self.status_label.pack(side=tk.RIGHT)
         
         # Canvas in "Card"-Frame mit feiner Kontur
         canvas_card = tk.Frame(self.root, bg="#243352", highlightthickness=0)
@@ -232,6 +240,7 @@ class GraphTool:
             if btn_mode == mode:
                 # Aktiven Button cyan
                 btn.config(bg="#64ffda", fg="#1a2744", relief=tk.FLAT)
+                self.status_label.config(text=f"Modus: {text}", fg="#64ffda")
             else:
                 btn.config(bg="#3d5a80", fg="#e2e8f0", relief=tk.FLAT)
     
@@ -367,6 +376,7 @@ class GraphTool:
                 self.edges[(v, u)]['accidents'].append((px, py))
             added_extra += 1
 
+        self.status_label.config(text="Modus: Zufallsnetz erzeugt – Start/Ziel wählen")
         self.draw_graph()
 
     def add_accident_to_edge(self, node1, node2, x, y):
