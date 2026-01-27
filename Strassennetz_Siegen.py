@@ -668,21 +668,24 @@ back_button_html = """
         top: 10px;
         left: 10px;
         z-index: 10000;
-        background: #ffffff;
-        border: 1px solid #ccc;
+        background: #1e293b;
+        border: 1px solid #334155;
         padding: 8px 12px;
-        border-radius: 4px;
+        border-radius: 6px;
         cursor: pointer;
         font-weight: 600;
-        font-size: 12px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        transition: background-color 0.2s;
+        font-size: 13px;
+        color: #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transition: all 0.2s;
     }
     #back-button:hover {
-        background: #f0f0f0;
+        background: #334155;
+        color: #f1f5f9;
+        border-color: #475569;
     }
 </style>
-<button id="back-button" onclick="window.location.href='index.html'">← Zurück</button>
+<button id="back-button" onclick="window.location.href='index.html'">Zurück</button>
 """
 back_btn = Html(back_button_html, script=False)
 m.get_root().html.add_child(back_btn)
